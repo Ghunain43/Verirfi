@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from backend.app.api import settings
+from backend.app.api.abuse import client_ip, network_of
 from backend.app.api.claim_cache import cache
 from backend.app.api.report_store import store
 from backend.app.api.schemas import RadarResponse, ReportRequest
@@ -18,20 +19,20 @@ def _claim_for(fingerprint: str) -> str:
 
 
 @router.post("/report", status_code=202)
-async def report(req: ReportRequest, token: str = Depends(require_token)):
+async def report(req: ReportRequest, request: Request, token: str = Depends(require_token)):
     """Opt-in anonymous report. Clients apply randomized-response noise before sending:
     with probability 0.25 they send a random fingerprint instead of the real one.
     Random fingerprints never reach the radar threshold, real rumors do.
     The region is validated and deliberately discarded."""
     check_rate_limit(token, kind="report")
-    store.add(token, req.fingerprint)
+    store.add(token, req.fingerprint, network_of(client_ip(request)))
     return {}
 
 
 @router.get("/radar", response_model=RadarResponse)
 async def radar(token: str = Depends(require_token)):
     check_rate_limit(token, kind="radar")
-    return RadarResponse(items=store.radar(settings.radar_min_reports(), _claim_for))
+    return RadarResponse(items=store.radar(settings.radar_min_reports(), _claim_for, settings.radar_min_networks()))
 
 
 # In mock mode, seed a few trending claims so the web radar page can be built before real reports exist.
@@ -45,4 +46,4 @@ if settings.mock_mode():
     for _fp, _claim, _n in _DEMO:
         cache.put(_fp, {"checkable": True, "claim": _claim})
         for _i in range(_n):
-            store.add(f"demo-install-{_i}", _fp)
+            store.add(f"demo-install-{_i}", _fp, f"demo-net-{_i % 5}")

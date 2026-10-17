@@ -7,6 +7,9 @@ Privacy design:
    unlinkable identifier for every other fingerprint, and the token itself is never stored.
  - The server secret is random per process and never written anywhere, so a restart
    also makes old identifiers meaningless. Everything is in memory.
+ - Reports also record a salted hash of the reporter's coarse network (IPv4 /24, IPv6 /48), per
+   fingerprint, so a claim only reaches the radar if reports came from several different networks.
+   Raw IP addresses are never stored.
  - The region sent by clients is validated and then discarded.
  - Timestamps are rounded to the minute.
 """
@@ -35,20 +38,26 @@ class ReportStore:
         msg = f"{token}:{fingerprint}".encode("utf-8")
         return hmac.new(self._secret, msg, hashlib.sha256).hexdigest()[:32]
 
-    def add(self, token: str, fingerprint: str) -> None:
+    def _network_id(self, network: str, fingerprint: str) -> str:
+        msg = f"net:{network}:{fingerprint}".encode("utf-8")
+        return hmac.new(self._secret, msg, hashlib.sha256).hexdigest()[:32]
+
+    def add(self, token: str, fingerprint: str, network: str = "unknown") -> None:
         fp = fingerprint.lower()
         now = _now()
         entry = self._data.get(fp)
         if entry is None:
-            entry = {"installs": set(), "first_seen": now, "last_seen": now}
+            entry = {"installs": set(), "networks": set(), "first_seen": now, "last_seen": now}
             self._data[fp] = entry
         entry["installs"].add(self._install_id(token, fp))  # a repeat report from the same install counts once
+        entry["networks"].add(self._network_id(network, fp))  # same idea for the (coarse) network
         entry["last_seen"] = now
         self._data.move_to_end(fp)
         while len(self._data) > self.max_fingerprints:
             self._data.popitem(last=False)
 
-    def radar(self, min_reports: int, claim_for: Callable[[str], str], limit: int = RADAR_LIMIT) -> list[dict]:
+    def radar(self, min_reports: int, claim_for: Callable[[str], str],
+              min_networks: int = 1, limit: int = RADAR_LIMIT) -> list[dict]:
         items = [
             {
                 "fingerprint": fp,
@@ -58,7 +67,7 @@ class ReportStore:
                 "last_seen": e["last_seen"],
             }
             for fp, e in self._data.items()
-            if len(e["installs"]) >= min_reports
+            if len(e["installs"]) >= min_reports and len(e["networks"]) >= min_networks
         ]
         items.sort(key=lambda i: i["last_seen"], reverse=True)
         items.sort(key=lambda i: i["reports"], reverse=True)  # stable: ties keep newest first

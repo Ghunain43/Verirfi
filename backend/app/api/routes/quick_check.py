@@ -5,6 +5,7 @@ import time
 from fastapi import APIRouter, Depends
 
 from backend.app.api import settings
+from backend.app.api.abuse import guard
 from backend.app.api.claim_cache import RESULT_KEYS, cache
 from backend.app.api.errors import ApiError
 from backend.app.api.mock import mock_response
@@ -41,6 +42,7 @@ async def quick_check(req: QuickCheckRequest, token: str = Depends(require_token
     start = time.perf_counter()
     # Fingerprint of the text exactly as selected, so it matches what clients compute.
     fingerprint = compute_fingerprint(req.text)
+    guard.check_near_duplicates(token, fingerprint)
 
     hit = cache.get(fingerprint)
     if hit is not None:  # same claim already checked: skip the slow, paid research

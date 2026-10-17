@@ -15,6 +15,7 @@ FP2 = "0123456789abcdef"
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.setenv("RADAR_MIN_REPORTS", "10")
+    monkeypatch.setenv("RADAR_MIN_NETWORKS", "1")  # existing tests all run from one test network
     monkeypatch.setenv("REPORT_RATE_LIMIT_PER_HOUR", "30")
     monkeypatch.setenv("LOOKUP_RATE_LIMIT_PER_HOUR", "200")
     security_deps.reset_state()
@@ -149,3 +150,33 @@ def test_store_evicts_least_recently_reported():
     s.add("t", "aaaaaaaaaaaaaaaa")   # refreshes a, so b is now the oldest
     s.add("t", "cccccccccccccccc")
     assert set(s._data) == {"aaaaaaaaaaaaaaaa", "cccccccccccccccc"}
+
+
+def test_radar_needs_reports_from_several_networks(monkeypatch):
+    monkeypatch.setenv("TRUST_PROXY", "true")
+    monkeypatch.setenv("RADAR_MIN_NETWORKS", "3")
+
+    def report_from(ip, t):
+        h = {**auth(t), "X-Forwarded-For": ip}
+        return client.post(f"{BASE}/report", json={"fingerprint": FP, "noisy": True}, headers=h)
+
+    # ten installs, all in one /24 network: not enough
+    last = None
+    for i in range(10):
+        last = token()
+        assert report_from(f"9.9.9.{i + 1}", last).status_code == 202
+    assert radar(last).json() == {"items": []}
+
+    # reports from two more networks lift it onto the radar
+    for ip in ("1.1.1.1", "2.2.2.2"):
+        assert report_from(ip, token()).status_code == 202
+    items = radar(last).json()["items"]
+    assert len(items) == 1 and items[0]["reports"] == 12
+
+
+def test_store_keeps_no_raw_ip(monkeypatch):
+    monkeypatch.setenv("TRUST_PROXY", "true")
+    t = token()
+    client.post(f"{BASE}/report", json={"fingerprint": FP, "noisy": True},
+                headers={**auth(t), "X-Forwarded-For": "203.0.113.77"})
+    assert "203.0.113" not in repr(store._data)

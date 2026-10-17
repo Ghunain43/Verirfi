@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 from fastapi import Header
 
 from backend.app.api import settings
+from backend.app.api.abuse import guard
 from backend.app.api.errors import ApiError
 
 _tokens: dict[str, float] = {}               # token -> expiry (unix seconds)
@@ -26,6 +27,7 @@ def require_token(authorization: str | None = Header(default=None)) -> str:
     if expiry is None or expiry < time.time():
         _tokens.pop(token, None)
         raise ApiError(401, "invalid_token", "Invalid or expired install token.")
+    guard.check_blocked(token)
     return token
 
 
@@ -47,6 +49,7 @@ def check_rate_limit(token: str, kind: str = "quick-check") -> None:
         q.popleft()
     if len(q) >= limit:
         retry_after = max(1, int(q[0] + window - now))
+        guard.strike(token, "rate_limit")
         raise ApiError(429, "rate_limited", "Too many requests. Try again later.",
                        headers={"Retry-After": str(retry_after)})
     q.append(now)
@@ -55,3 +58,4 @@ def check_rate_limit(token: str, kind: str = "quick-check") -> None:
 def reset_state() -> None:  # for tests
     _tokens.clear()
     _hits.clear()
+    guard.reset()
