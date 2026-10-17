@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { submitFactcheck } from "@/lib/factcheck";
+import { ApiError } from "@/lib/api";
 import { glass, pageBg } from "@/lib/ui";
 
 const input = "w-full rounded-xl border border-white/10 bg-white/5 p-3 outline-none placeholder:text-white/30";
@@ -13,6 +14,7 @@ export default function FactCheckerPage() {
   const [explanation, setExplanation] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const [errMsg, setErrMsg] = useState("");
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -20,7 +22,15 @@ export default function FactCheckerPage() {
     try {
       await submitFactcheck(apiKey, { fingerprint, verdict, explanation, source_url: sourceUrl });
       setStatus("done");
-    } catch {
+    } catch (err) {
+      const code = err instanceof ApiError ? err.status : 0;
+      setErrMsg(
+        code === 401 || code === 403
+          ? "The API key was not accepted."
+          : code === 400
+          ? "Some fields are not valid. Check the fingerprint and link."
+          : "Couldn't send. Please try again."
+      );
       setStatus("error");
     }
   }
@@ -49,7 +59,7 @@ export default function FactCheckerPage() {
             {status === "sending" ? "Sending..." : "Publish response"}
           </button>
           {status === "done" && <p className="text-emerald-300">Response sent.</p>}
-          {status === "error" && <p className="text-rose-300">Couldn&apos;t send. Check the key and fields.</p>}
+          {status === "error" && <p className="text-rose-300">{errMsg}</p>}
         </form>
       </div>
     </main>

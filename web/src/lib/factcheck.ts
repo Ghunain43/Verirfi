@@ -1,4 +1,4 @@
-import { BASE, USE_MOCK, sleep } from "./api";
+import { BASE, USE_MOCK, sleep, toError } from "./api";
 
 export type FactcheckSubmission = {
   fingerprint: string;
@@ -18,5 +18,5 @@ export async function submitFactcheck(apiKey: string, s: FactcheckSubmission): P
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(s),
   });
-  if (!res.ok) throw new Error(String(res.status));
+  if (!res.ok) throw await toError(res);
 }
