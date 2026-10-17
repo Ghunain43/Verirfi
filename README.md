@@ -1,7 +1,7 @@
 # Verifi
 Slow rumors down without reading anyone's chats.
 
-Code//Connect '26 - Problem 03: Misinformation Control. Team: Neural Nomads.
+Code//Connect '26 - Problem 03: Misinformation Control. Team: Bug Beaters.
 
 ## Structure
 - `backend/`   FastAPI: scope gate, research, sources, evidence, privacy, security
