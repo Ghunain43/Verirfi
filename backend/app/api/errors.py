@@ -25,8 +25,7 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError):
-        # Contract says 400 invalid_input, not FastAPI's default 422
         return JSONResponse(
             status_code=400,
-            content=_body("invalid_input", "Empty text, over 2000 chars, or bad lang/source."),
+            content=_body("invalid_input", "Invalid or missing fields in the request."),
         )
