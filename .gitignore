@@ -18,3 +18,7 @@ mobile/.dart_tool/
 .DS_Store
 .idea/
 .vscode/
+
+.venv/
+__pycache__/
+.pytest_cache/
