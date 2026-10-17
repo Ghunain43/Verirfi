@@ -29,9 +29,17 @@ def require_token(authorization: str | None = Header(default=None)) -> str:
     return token
 
 
+def _limit(kind: str) -> int:
+    if kind == "quick-check":
+        return settings.rate_limit_per_hour()
+    if kind == "report":
+        return settings.report_rate_limit_per_hour()
+    return settings.lookup_rate_limit_per_hour()  # lookup, radar
+
+
 def check_rate_limit(token: str, kind: str = "quick-check") -> None:
     """Sliding one-hour window per token. Each kind of call has its own counter and limit."""
-    limit = settings.rate_limit_per_hour() if kind == "quick-check" else settings.lookup_rate_limit_per_hour()
+    limit = _limit(kind)
     now = time.time()
     window = 3600
     q = _hits[f"{kind}:{token}"]

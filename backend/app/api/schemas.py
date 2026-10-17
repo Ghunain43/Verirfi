@@ -1,4 +1,5 @@
 """Pydantic models matching shared/API.md v1. Do not rename fields without Ghunain's OK."""
+import re
 from typing import Literal, Optional
 
 from pydantic import BaseModel, field_validator
@@ -62,3 +63,42 @@ class LookupEntry(BaseModel):
 class LookupResponse(BaseModel):
     prefix: str
     entries: list[LookupEntry]
+
+
+class ReportRequest(BaseModel):
+    fingerprint: str
+    region: Optional[str] = None
+    noisy: bool
+
+    @field_validator("fingerprint")
+    @classmethod
+    def fingerprint_ok(cls, v: str) -> str:
+        if not re.fullmatch(r"[0-9a-fA-F]{16}", v):
+            raise ValueError("fingerprint must be 16 hex characters")
+        return v.lower()
+
+    @field_validator("region")
+    @classmethod
+    def region_ok(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not re.fullmatch(r"[A-Za-z0-9-]{2,8}", v):
+            raise ValueError("region must be a short code like PK-SD")
+        return v
+
+    @field_validator("noisy")
+    @classmethod
+    def noisy_ok(cls, v: bool) -> bool:
+        if v is not True:
+            raise ValueError("reports are only accepted with client-side noise applied")
+        return v
+
+
+class RadarItem(BaseModel):
+    fingerprint: str
+    claim: str = ""
+    reports: int
+    first_seen: str
+    last_seen: str
+
+
+class RadarResponse(BaseModel):
+    items: list[RadarItem]
