@@ -62,7 +62,9 @@ export function pickMock(text: string): QuickCheckResult {
 
 // Fake radar data
 export const MOCK_RADAR: RadarItem[] = [
-  { fingerprint: "a3f19c2b7d4e8a01", claim: "Drinking hot water cures dengue fever.", reports: 42, first_seen: "2026-10-15T08:00:00Z", last_seen: "2026-10-17T09:30:00Z" },
+  { fingerprint: "a3f19c2b7d4e8a01", claim: "Drinking hot water cures dengue fever.", reports: 42, why: "Health authorities say there is no cure for dengue, only supportive care.", first_seen: "2026-10-15T08:00:00Z", last_seen: "2026-10-17T09:30:00Z" },
   { fingerprint: "77aa10c4be92d3e5", claim: "Free laptops are being given to all students this week.", reports: 27, first_seen: "2026-10-16T11:00:00Z", last_seen: "2026-10-17T07:10:00Z" },
   { fingerprint: "0be4f7a19c3d5521", claim: "Petrol will be unavailable from tomorrow.", reports: 13, first_seen: "2026-10-17T05:00:00Z", last_seen: "2026-10-17T10:00:00Z" },
+  { fingerprint: "5d2e8b0a41c7f9e3", claim: "Eating raw garlic prevents all viral infections.", reports: 0, first_seen: "2026-10-17T06:00:00Z", last_seen: "2026-10-17T06:00:00Z", origin: "web", source_url: "https://www.who.int/emergencies/diseases/novel-coronavirus-2019/advice-for-public/myth-busters", publisher: "who.int" },
+  { fingerprint: "e41a7c93b05d2f88", claim: "A new law bans all mobile phones in schools next month.", reports: 0, first_seen: "2026-10-17T06:00:00Z", last_seen: "2026-10-17T06:00:00Z", origin: "web", source_url: "https://example.org/fact-check/phone-ban", publisher: "example.org" },
 ];

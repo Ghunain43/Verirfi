@@ -28,7 +28,11 @@ export type QuickCheckResult = {
 export type RadarItem = {
   fingerprint: string;
   claim: string;
-  reports: number;
+  reports: number; // distinct installs; 0 for web-found claims
   first_seen: string;
   last_seen: string;
+  origin?: "community" | "web"; // web = rated false by fact-checkers, found by search
+  source_url?: string | null;
+  publisher?: string | null;
+  why?: string | null; // short reason this claim is listed
 };

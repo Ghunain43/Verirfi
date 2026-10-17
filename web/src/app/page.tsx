@@ -1,90 +1,42 @@
-"use client";
-import { useState } from "react";
 import Link from "next/link";
-import { quickCheck, ApiError } from "@/lib/api";
-import { QuickCheckResult } from "@/lib/types";
-import { glass, pageBg } from "@/lib/ui";
-import ResultCard from "@/components/ResultCard";
+import Image from "next/image";
+import Tilt from "@/components/Tilt";
 
-const MAX = 2000;
-
-function errorMessage(e: unknown): string {
-  if (!(e instanceof ApiError)) return "Couldn't reach the server. Check your connection and try again.";
-  switch (e.code) {
-    case "invalid_input":
-      return "That text isn't valid. Empty text or text over 2000 characters can't be checked.";
-    case "invalid_token":
-      return "Your session expired. Press Check again and we'll get a new token.";
-    case "rate_limited": {
-      const mins = e.retryAfter ? Math.ceil(e.retryAfter / 60) : null;
-      return `You've reached the limit of 20 checks per hour.${
-        mins ? ` Try again in about ${mins} minute${mins > 1 ? "s" : ""}.` : " Please try again later."
-      }`;
-    }
-    case "upstream_failed":
-      return "The research service isn't responding right now. Please try again shortly.";
-    case "timeout":
-      return "The check took too long. Please try again.";
-    default:
-      return "Something went wrong. Please try again.";
-  }
-}
+const FEATURES = [
+  { t: "Paste anything", d: "A forwarded message, a headline, a screenshot caption. We pull out the claim that can actually be checked." },
+  { t: "Sources, not opinions", d: "Every answer shows the evidence behind it and how sure we are. Opinions and jokes are left alone." },
+  { t: "Rumor Radar", d: "See which false claims are spreading right now, and why each one is on the list." },
+];
 
 export default function Home() {
-  const [text, setText] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<QuickCheckResult | null>(null);
-  const [error, setError] = useState("");
-
-  async function onCheck() {
-    setLoading(true);
-    setError("");
-    setResult(null);
-    try {
-      setResult(await quickCheck(text.trim()));
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
-    <main className={pageBg}>
-      <div className="mx-auto max-w-2xl space-y-4">
-        <header className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Verifi</h1>
-          <Link href="/radar" className="text-sm text-indigo-300 hover:underline">Rumor Radar →</Link>
-        </header>
-
-        <div className={glass}>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            maxLength={MAX}
-            rows={6}
-            placeholder="Paste the message you want to check..."
-            className="w-full resize-none bg-transparent outline-none placeholder:text-white/30"
-          />
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-xs text-white/40">{text.length}/{MAX}</span>
-            <button
-              onClick={onCheck}
-              disabled={loading || !text.trim()}
-              className="rounded-xl bg-indigo-500 px-5 py-2 font-medium disabled:opacity-40"
-            >
-              {loading ? "Checking..." : "Check"}
-            </button>
-          </div>
+    <main className="relative z-10 px-5 pb-20 text-white">
+      <section className="mx-auto flex max-w-3xl flex-col items-center pt-14 text-center sm:pt-20">
+        <div className="float relative">
+          <div className="absolute inset-0 -z-10 scale-125 rounded-full bg-indigo-500/30 blur-3xl" />
+          <Image src="/logo.png" alt="Verifi" width={116} height={116} priority className="rounded-[28px] shadow-2xl" />
         </div>
-
-        {error && <div className={`${glass} text-rose-300`}>{error}</div>}
-        {result && <ResultCard r={result} />}
-
-        <p className="pt-2 text-center text-xs text-white/30">
-          Your message is never saved or logged.
+        <h1 className="mt-8 text-4xl font-bold leading-tight tracking-tight sm:text-6xl">
+          Check it before <span className="grad-text">you share it.</span>
+        </h1>
+        <p className="mt-5 max-w-xl text-base text-white/60 sm:text-lg">
+          Verifi weighs a claim against real sources in seconds and shows you the evidence. Nothing you paste is saved.
         </p>
-      </div>
+        <div className="mt-9 flex flex-wrap justify-center gap-3">
+          <Link href="/check" className="btn-primary rounded-2xl px-7 py-3.5 text-base font-semibold">Check a claim</Link>
+          <Link href="/radar" className="btn-ghost rounded-2xl px-7 py-3.5 text-base font-medium">View Rumor Radar</Link>
+        </div>
+      </section>
+
+      <section className="mx-auto mt-24 grid max-w-5xl gap-5 sm:grid-cols-3">
+        {FEATURES.map((f, i) => (
+          <Tilt key={f.t} className="glass rounded-3xl p-6">
+            <div className="grad-text text-sm font-semibold">0{i + 1}</div>
+            <div className="mt-2 text-lg font-semibold">{f.t}</div>
+            <p className="mt-2 text-sm leading-relaxed text-white/55">{f.d}</p>
+          </Tilt>
+        ))}
+      </section>
     </main>
   );
 }

@@ -2,12 +2,13 @@ import asyncio
 import logging
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from backend.app.api import settings
 from backend.app.api.claim_cache import RESULT_KEYS, cache
 from backend.app.api.errors import ApiError
 from backend.app.api.mock import mock_response
+from backend.app.api.radar_store import client_ip, radar_store
 from backend.app.api.schemas import QuickCheckRequest, QuickCheckResponse
 from backend.app.api.security_deps import check_rate_limit, require_token
 from backend.app.core.fingerprint import compute_fingerprint
@@ -27,16 +28,24 @@ except ImportError as exc:  # e.g. a dependency is missing
 router = APIRouter()
 
 
+def _report(request: Request, token: str, data: dict, fingerprint: str) -> None:
+    """Feed the Rumor Radar: counts distinct installs/networks per claim, stores no raw token or IP."""
+    if data.get("checkable"):
+        radar_store.record(fingerprint, data["claim"], token, client_ip(request))
+
+
 def _ms(start: float) -> int:
     return int((time.perf_counter() - start) * 1000)
 
 
 @router.post("/quick-check", response_model=QuickCheckResponse)
-async def quick_check(req: QuickCheckRequest, token: str = Depends(require_token)):
+async def quick_check(req: QuickCheckRequest, request: Request, token: str = Depends(require_token)):
     check_rate_limit(token)
 
     if not AGENTS_READY:
-        return mock_response(req.text)
+        data = mock_response(req.text)
+        _report(request, token, data, data["fingerprint"])
+        return data
 
     start = time.perf_counter()
     # Fingerprint of the text exactly as selected, so it matches what clients compute.
@@ -45,6 +54,7 @@ async def quick_check(req: QuickCheckRequest, token: str = Depends(require_token
     hit = cache.get(fingerprint)
     if hit is not None:  # same claim already checked: skip the slow, paid research
         fields = {k: hit[k] for k in RESULT_KEYS if k in hit}
+        _report(request, token, hit, fingerprint)
         return QuickCheckResponse(**fields, fingerprint=fingerprint, cached=True, took_ms=_ms(start))
 
     try:
@@ -69,5 +79,6 @@ async def quick_check(req: QuickCheckRequest, token: str = Depends(require_token
     data = result.model_dump()
     if data["checkable"]:  # opinions, satire etc. have no verdict worth caching
         cache.put(fingerprint, data)
+        _report(request, token, data, fingerprint)
 
     return QuickCheckResponse(**data, fingerprint=fingerprint, cached=False, took_ms=_ms(start))

@@ -62,3 +62,19 @@ class LookupEntry(BaseModel):
 class LookupResponse(BaseModel):
     prefix: str
     entries: list[LookupEntry]
+
+
+class RadarItem(BaseModel):
+    fingerprint: str
+    claim: str
+    reports: int          # distinct installs that checked this claim (0 for web-found claims)
+    first_seen: str
+    last_seen: str
+    origin: Literal["community", "web"] = "community"   # web = rated false by fact-checkers, found by search
+    source_url: Optional[str] = None
+    publisher: Optional[str] = None
+    why: Optional[str] = None   # one short reason this claim is listed
+
+
+class RadarResponse(BaseModel):
+    items: list[RadarItem]
