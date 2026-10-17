@@ -23,7 +23,7 @@ export default function Radar() {
           <Link href="/" className="text-sm text-indigo-300 hover:underline">← Check a message</Link>
         </header>
         <p className="text-sm text-white/60">
-          Claims reported by at least 10 different installs.
+        Claims reported by at least 10 different installs on at least 3 different networks.
         </p>
 
         {error && <div className={`${glass} text-rose-300`}>{error}</div>}
