@@ -1,82 +1,474 @@
+import 'dart:math' show min;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'glass.dart';
 
-class ResultCard extends StatelessWidget {
+String _pct(double v) => '${(v * 100).round()}%';
+
+class _Verdict {
+  const _Verdict(this.label, this.color, this.icon);
+  final String label;
+  final Color color;
+  final IconData icon;
+}
+
+_Verdict _verdict(List<Map<String, dynamic>> ev, double hi) {
+  if (hi <= 0.2 || ev.isEmpty) {
+    return const _Verdict(
+      'Not enough evidence',
+      C.neutral,
+      Icons.help_outline_rounded,
+    );
+  }
+  double s = 0, c = 0;
+  for (final e in ev) {
+    final q = (e['quality'] as num?)?.toDouble() ?? 0.5;
+    final st = e['stance'];
+    if (st == 'supporting') s += q;
+    if (st == 'contradicting') c += q;
+  }
+  if (s > c * 1.5) {
+    return const _Verdict('Likely true', C.good, Icons.check_circle_rounded);
+  }
+  if (c > s * 1.5) {
+    return const _Verdict('Likely false', C.bad, Icons.cancel_rounded);
+  }
+  return const _Verdict(
+    'Mixed evidence',
+    C.amber,
+    Icons.compare_arrows_rounded,
+  );
+}
+
+class ResultView extends StatelessWidget {
+  const ResultView({super.key, required this.data});
   final Map<String, dynamic> data;
-  const ResultCard({super.key, required this.data});
 
-  Color _stance(String s) {
-    switch (s) {
-      case 'supporting':
-        return Colors.green;
-      case 'contradicting':
-        return Colors.red;
+  @override
+  Widget build(BuildContext context) {
+    if (data['checkable'] != true) {
+      return _NotCheckable(reason: data['reason_unchecked']?.toString());
+    }
+    final lo = (data['confidence_low'] as num).toDouble();
+    final hi = (data['confidence_high'] as num).toDouble();
+    final evidence = ((data['evidence'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>();
+    final v = _verdict(evidence, hi);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FadeSlideIn(
+          child: Tilt3D(
+            child: GlassCard(
+              radius: 28,
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: v.color.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: v.color.withValues(alpha: 0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(v.icon, size: 18, color: v.color),
+                        const SizedBox(width: 6),
+                        Text(
+                          v.label,
+                          style: TextStyle(
+                            color: v.color,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '\u201C${data['claim'] ?? ''}\u201D',
+                    style: const TextStyle(
+                      color: C.textHi,
+                      fontSize: 20,
+                      height: 1.3,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  RangeMeter(lo: lo, hi: hi, color: v.color),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Confidence range',
+                        style: TextStyle(color: C.textLo, fontSize: 13),
+                      ),
+                      Text(
+                        '${_pct(lo)} \u2013 ${_pct(hi)}',
+                        style: TextStyle(
+                          color: v.color,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if ((data['likely_answer'] ?? '').toString().isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      data['likely_answer'].toString(),
+                      style: const TextStyle(
+                        color: C.textLo,
+                        fontSize: 13.5,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        const FadeSlideIn(delayMs: 120, child: _Disclaimer()),
+        const SizedBox(height: 22),
+        FadeSlideIn(
+          delayMs: 200,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            child: Text(
+              'EVIDENCE \u00B7 ${evidence.length}',
+              style: const TextStyle(
+                color: C.textLo,
+                fontSize: 12,
+                letterSpacing: 1.4,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+        for (var i = 0; i < evidence.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: FadeSlideIn(
+              delayMs: min(260 + i * 70, 700),
+              child: _EvidenceTile(e: evidence[i]),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class RangeMeter extends StatelessWidget {
+  const RangeMeter({
+    super.key,
+    required this.lo,
+    required this.hi,
+    required this.color,
+  });
+  final double lo, hi;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeOutCubic,
+          builder: (_, t, __) => LayoutBuilder(
+            builder: (_, cons) {
+              final w = cons.maxWidth;
+              final width = (w * (hi - lo) * t).clamp(6.0, w).toDouble();
+              return SizedBox(
+                height: 14,
+                child: Stack(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: w * lo,
+                      width: width,
+                      top: 0,
+                      bottom: 0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(7),
+                          gradient: LinearGradient(
+                            colors: [color, color.withValues(alpha: 0.6)],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: color.withValues(alpha: 0.55),
+                              blurRadius: 14,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('0%', style: TextStyle(color: C.textLo, fontSize: 11)),
+            Text('50%', style: TextStyle(color: C.textLo, fontSize: 11)),
+            Text('100%', style: TextStyle(color: C.textLo, fontSize: 11)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _Disclaimer extends StatelessWidget {
+  const _Disclaimer();
+
+  @override
+  Widget build(BuildContext context) {
+    return const GlassCard(
+      blur: false,
+      radius: 16,
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline_rounded, size: 18, color: C.textLo),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Not a verdict. Weigh the sources yourself before you forward.',
+              style: TextStyle(color: C.textLo, fontSize: 13, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EvidenceTile extends StatelessWidget {
+  const _EvidenceTile({required this.e});
+  final Map<String, dynamic> e;
+
+  @override
+  Widget build(BuildContext context) {
+    final stance = (e['stance'] ?? '').toString();
+    final color = stance == 'supporting'
+        ? C.good
+        : stance == 'contradicting'
+        ? C.bad
+        : C.neutral;
+    final label = stance == 'supporting'
+        ? 'Supports'
+        : stance == 'contradicting'
+        ? 'Contradicts'
+        : 'Neutral';
+    final q = ((e['quality'] as num?)?.toDouble() ?? 0.5)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final url = (e['url'] ?? '').toString();
+
+    return GestureDetector(
+      onLongPress: url.isEmpty
+          ? null
+          : () {
+              Clipboard.setData(ClipboardData(text: url));
+              HapticFeedback.selectionClick();
+              ScaffoldMessenger.of(context)
+                ..hideCurrentSnackBar()
+                ..showSnackBar(
+                  const SnackBar(
+                    content: Text('Source link copied'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+            },
+      child: GlassCard(
+        blur: false,
+        radius: 20,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.language_rounded, size: 16, color: C.textLo),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    (e['publisher'] ?? '').toString(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: C.textLo,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: color.withValues(alpha: 0.5)),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              (e['title'] ?? '').toString(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: C.textHi,
+                fontSize: 15.5,
+                height: 1.3,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if ((e['snippet'] ?? '').toString().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                e['snippet'].toString(),
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: C.textLo,
+                  fontSize: 13.5,
+                  height: 1.4,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text(
+                  'Source quality',
+                  style: TextStyle(color: C.textLo, fontSize: 12),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: q,
+                      minHeight: 5,
+                      backgroundColor: Colors.white.withValues(alpha: 0.10),
+                      valueColor: AlwaysStoppedAnimation(color),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  _pct(q),
+                  style: const TextStyle(color: C.textLo, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NotCheckable extends StatelessWidget {
+  const _NotCheckable({this.reason});
+  final String? reason;
+
+  String get _title {
+    switch (reason) {
+      case 'opinion':
+        return 'That\u2019s an opinion';
+      case 'satire':
+        return 'That looks like satire';
+      case 'religious':
+        return 'That\u2019s a matter of belief';
       default:
-        return Colors.grey;
+        return 'Not a checkable claim';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (data['checkable'] != true) {
-      return Center(
-        child: Text(
-          'Not something we can fact-check (${data['reason_unchecked']}).\n'
-          'Opinions, satire and beliefs are not judged.',
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-    final lo = (data['confidence_low'] as num).toDouble();
-    final hi = (data['confidence_high'] as num).toDouble();
-    final evidence = (data['evidence'] as List).cast<Map<String, dynamic>>();
-
-    return ListView(
-      children: [
-        Text(
-          data['claim'] ?? '',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 12),
-        Text(data['likely_answer'] ?? ''),
-        const SizedBox(height: 12),
-        Text(
-          'Confidence range: ${(lo * 100).round()}% to ${(hi * 100).round()}%',
-        ),
-        const SizedBox(height: 6),
-        LayoutBuilder(
-          builder: (_, c) => Stack(
+    return FadeSlideIn(
+      child: Tilt3D(
+        child: GlassCard(
+          radius: 28,
+          padding: const EdgeInsets.all(26),
+          child: Column(
             children: [
               Container(
-                height: 10,
-                width: c.maxWidth,
-                color: Colors.grey.shade300,
-              ),
-              Positioned(
-                left: c.maxWidth * lo,
-                child: Container(
-                  height: 10,
-                  width: c.maxWidth * (hi - lo),
-                  color: Colors.blue,
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: C.neutral.withValues(alpha: 0.18),
+                  border: Border.all(color: C.neutral.withValues(alpha: 0.5)),
                 ),
+                child: const Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  color: C.textHi,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: C.textHi,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Verifi doesn\u2019t judge opinions, satire or beliefs. '
+                'It only checks factual claims, and shows its evidence.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: C.textLo, fontSize: 14, height: 1.45),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        const Text('Evidence', style: TextStyle(fontWeight: FontWeight.bold)),
-        for (final e in evidence)
-          Card(
-            child: ListTile(
-              title: Text(e['title'] ?? ''),
-              subtitle: Text('${e['publisher']}\n${e['snippet'] ?? ''}'),
-              isThreeLine: true,
-              trailing: Chip(
-                label: Text(e['stance'] ?? ''),
-                backgroundColor: _stance(e['stance'] ?? '').withOpacity(0.15),
-              ),
-            ),
-          ),
-      ],
+      ),
     );
   }
 }
