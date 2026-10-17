@@ -11,6 +11,16 @@ export type Evidence = {
   snippet: string | null;
 };
 
+export type LookupEntry = {
+  fingerprint: string;
+  claim: string;
+  likely_answer: string | null;
+  confidence_low: number;
+  confidence_high: number;
+  evidence: Evidence[];
+  checked_at: string;
+};
+
 export type QuickCheckResult = {
   checkable: boolean;
   claim: string;
@@ -23,12 +33,4 @@ export type QuickCheckResult = {
   fingerprint: string;
   cached: boolean;
   took_ms: number;
-};
-
-export type RadarItem = {
-  fingerprint: string;
-  claim: string;
-  reports: number;
-  first_seen: string;
-  last_seen: string;
 };

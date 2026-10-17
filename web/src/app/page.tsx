@@ -1,6 +1,5 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
 import { quickCheck, ApiError } from "@/lib/api";
 import { QuickCheckResult } from "@/lib/types";
 import { glass, pageBg } from "@/lib/ui";
@@ -54,7 +53,7 @@ export default function Home() {
       <div className="mx-auto max-w-2xl space-y-4">
         <header className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Verifi</h1>
-          <Link href="/radar" className="text-sm text-indigo-300 hover:underline">Rumor Radar →</Link>
+          <span className="text-sm text-white/50">Backend-powered claim checks</span>
         </header>
 
         <div className={glass}>

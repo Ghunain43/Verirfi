@@ -1,5 +1,6 @@
-import { QuickCheckResult, RadarItem } from "./types";
-import { MOCK_CHECKABLE, MOCK_UNCHECKED, MOCK_RADAR } from "./mock";
+import { LookupEntry, QuickCheckResult } from "./types";
+import { MOCK_CHECKABLE, MOCK_UNCHECKED } from "./mock";
+import { computeFingerprint } from "./fingerprint";
 
 export const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1";
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
@@ -57,19 +58,29 @@ export async function quickCheck(text: string): Promise<QuickCheckResult> {
     await sleep(800);
     return text.toLowerCase().includes("opinion") ? MOCK_UNCHECKED : MOCK_CHECKABLE;
   }
+  const startedAt = performance.now();
+  const fingerprint = computeFingerprint(text);
+  const lookup = await authed(`/lookup/${fingerprint.slice(0, 4)}`);
+  const { entries } = (await lookup.json()) as { entries: LookupEntry[] };
+  const cached = entries.find((entry) => entry.fingerprint === fingerprint);
+  if (cached) {
+    return {
+      checkable: true,
+      claim: cached.claim,
+      reason_unchecked: null,
+      likely_answer: cached.likely_answer,
+      confidence_low: cached.confidence_low,
+      confidence_high: cached.confidence_high,
+      evidence: cached.evidence,
+      lang_detected: "auto",
+      fingerprint,
+      cached: true,
+      took_ms: Math.round(performance.now() - startedAt),
+    };
+  }
   const res = await authed("/quick-check", {
     method: "POST",
     body: JSON.stringify({ text, lang: "auto", source: "web" }),
   });
   return res.json();
-}
-
-export async function getRadar(): Promise<RadarItem[]> {
-  if (USE_MOCK) {
-    await sleep(500);
-    return MOCK_RADAR;
-  }
-  const res = await authed("/radar");
-  const data = await res.json();
-  return data.items;
 }
