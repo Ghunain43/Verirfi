@@ -11,25 +11,29 @@ from backend.app.api.schemas import QuickCheckRequest, QuickCheckResponse
 from backend.app.api.security_deps import check_rate_limit, require_token
 from backend.app.core.fingerprint import compute_fingerprint
 
-router = APIRouter()
 log = logging.getLogger("verifi.quick_check")
+
+try:
+    from backend.app.agents import VerifiError, run_quick_check
+    AGENTS_READY = True
+except ImportError as exc:  # e.g. a dependency is missing
+    log.warning("agents not importable, using API mock: %s", exc)
+    AGENTS_READY = False
+
+    class VerifiError(Exception):
+        code = "upstream_failed"
+
+router = APIRouter()
 
 
 @router.post("/quick-check", response_model=QuickCheckResponse)
 async def quick_check(req: QuickCheckRequest, token: str = Depends(require_token)):
     check_rate_limit(token)
+
+    if not AGENTS_READY:
+        return mock_response(req.text)
+
     start = time.perf_counter()
-
-    if settings.mock_mode():
-        return mock_response(req.text)
-
-    # Real path: call exactly the function from API.md section 3, nothing else from agents.
-    try:
-        from app.agents.quick_check import run_quick_check
-    except ImportError:
-        log.warning("agents not ready, falling back to mock")
-        return mock_response(req.text)
-
     try:
         result = await asyncio.wait_for(
             run_quick_check(req.text, req.lang),
@@ -37,9 +41,16 @@ async def quick_check(req: QuickCheckRequest, token: str = Depends(require_token
         )
     except asyncio.TimeoutError:
         raise ApiError(504, "timeout", "Check took longer than 25 seconds.")
-    except Exception:
-        # never log req.text: the server must not keep message text
-        log.exception("agent failure")
+    except VerifiError as e:
+        # log only the code, never the message text (privacy rule)
+        log.warning("agent error code=%s", e.code)
+        if e.code == "invalid_input":
+            raise ApiError(400, "invalid_input", "Empty text, over 2000 chars, or bad lang.")
+        if e.code == "timeout":
+            raise ApiError(504, "timeout", "Check timed out.")
+        raise ApiError(502, "upstream_failed", "Research provider failed.")
+    except Exception as e:
+        log.error("agent failure: %s", type(e).__name__)
         raise ApiError(502, "upstream_failed", "Research provider failed.")
 
     return QuickCheckResponse(

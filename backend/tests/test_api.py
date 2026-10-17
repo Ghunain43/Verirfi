@@ -1,8 +1,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app.api.main import app
+from backend.app.agents import QuickCheckResult
 from backend.app.api import security_deps
+from backend.app.api.main import app
+from backend.app.api.routes import quick_check as qc
 
 client = TestClient(app)
 BASE = "/api/v1"
@@ -12,6 +14,8 @@ BASE = "/api/v1"
 def _clean(monkeypatch):
     monkeypatch.setenv("MOCK_MODE", "true")
     monkeypatch.setenv("RATE_LIMIT_PER_HOUR", "20")
+    # use the API's own mock so these tests never call the real agents
+    monkeypatch.setattr(qc, "AGENTS_READY", False)
     security_deps.reset_state()
 
 
@@ -72,3 +76,33 @@ def test_rate_limit_429(monkeypatch):
     assert codes == [200, 200, 200, 429]
     r = client.post(f"{BASE}/quick-check", json=body(), headers=auth(t))
     assert "retry-after" in r.headers
+
+
+# ---- real agent path: error mapping and server-added fields ----
+
+def _agent_raising(code):
+    async def fake(text, lang):
+        raise qc.VerifiError("boom", code=code)
+    return fake
+
+
+@pytest.mark.parametrize("code,status,expected", [
+    ("invalid_input", 400, "invalid_input"),
+    ("timeout", 504, "timeout"),
+    ("upstream_failed", 502, "upstream_failed"),
+    ("llm_bad_json", 502, "upstream_failed"),
+])
+def test_agent_error_mapping(monkeypatch, code, status, expected):
+    monkeypatch.setattr(qc, "AGENTS_READY", True)
+    monkeypatch.setattr(qc, "run_quick_check", _agent_raising(code), raising=False)
+    r = client.post(f"{BASE}/quick-check", json=body(), headers=auth(token()))
+    assert r.status_code == status and r.json()["error"]["code"] == expected
+
+
+def test_agent_result_gets_server_fields(monkeypatch):
+    async def fake(text, lang):
+        return QuickCheckResult(checkable=True, claim="Water is wet.", likely_answer="True.")
+    monkeypatch.setattr(qc, "AGENTS_READY", True)
+    monkeypatch.setattr(qc, "run_quick_check", fake, raising=False)
+    d = client.post(f"{BASE}/quick-check", json=body(), headers=auth(token())).json()
+    assert len(d["fingerprint"]) == 16 and d["cached"] is False and isinstance(d["took_ms"], int)
