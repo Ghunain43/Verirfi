@@ -1,5 +1,5 @@
 import { QuickCheckResult, RadarItem } from "./types";
-import { MOCK_CHECKABLE, MOCK_UNCHECKED, MOCK_RADAR } from "./mock";
+import { pickMock, MOCK_RADAR } from "./mock";
 
 export const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1";
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
@@ -13,7 +13,7 @@ export class ApiError extends Error {
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function toError(res: Response) {
+export async function toError(res: Response) {
   let code = "unknown";
   try {
     const body = await res.json();
@@ -55,7 +55,7 @@ async function authed(path: string, init: RequestInit = {}): Promise<Response> {
 export async function quickCheck(text: string): Promise<QuickCheckResult> {
   if (USE_MOCK) {
     await sleep(800);
-    return text.toLowerCase().includes("opinion") ? MOCK_UNCHECKED : MOCK_CHECKABLE;
+    return pickMock(text);
   }
   const res = await authed("/quick-check", {
     method: "POST",

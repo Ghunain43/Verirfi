@@ -37,6 +37,29 @@ export const MOCK_UNCHECKED: QuickCheckResult = {
   took_ms: 80,
 };
 
+export const MOCK_INSUFFICIENT: QuickCheckResult = {
+  checkable: true,
+  claim: "A new law will ban mobile phones in all schools next month.",
+  reason_unchecked: null,
+  likely_answer: "Not enough evidence to say",
+  confidence_low: 0.2,
+  confidence_high: 0.45,
+  evidence: [],
+  lang_detected: "en",
+  fingerprint: "c91d02e47a5b6f38",
+  cached: false,
+  took_ms: 150,
+};
+
+// Picks a sample response so every result state can be demoed in mock mode.
+// Type "opinion" / "worst" / "best" for an unchecked case, "unknown" for not-enough-evidence.
+export function pickMock(text: string): QuickCheckResult {
+  const t = text.toLowerCase();
+  if (/(opinion|worst|best)/.test(t)) return MOCK_UNCHECKED;
+  if (/(unknown|not sure|maybe)/.test(t)) return MOCK_INSUFFICIENT;
+  return MOCK_CHECKABLE;
+}
+
 // Fake radar data
 export const MOCK_RADAR: RadarItem[] = [
   { fingerprint: "a3f19c2b7d4e8a01", claim: "Drinking hot water cures dengue fever.", reports: 42, first_seen: "2026-10-15T08:00:00Z", last_seen: "2026-10-17T09:30:00Z" },
