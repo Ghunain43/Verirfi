@@ -57,8 +57,9 @@ def build_answer(
     coverage = min(1.0, (n_sup + n_con) / 3)
     centre = min(0.95, 0.6 * decisiveness + 0.4 * coverage)
     half = 0.08 + 0.17 * (1.0 - coverage)
-    return text, round(max(0.0, centre - half), 2), round(min(1.0, centre + half), 2), shown
-
+    hi = round(min(0.97, centre + half), 2)
+    lo = round(max(0.0, min(centre - half, hi)), 2)
+    return text, lo, hi, shown
 
 def _display_evidence(evidence: list[dict[str, Any]], by_id: dict[str, dict[str, Any]], quality: dict[str, float]) -> list[Evidence]:
     ordered = sorted(
