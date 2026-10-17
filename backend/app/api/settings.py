@@ -15,6 +15,10 @@ def rate_limit_per_hour() -> int:
     return int(os.getenv("RATE_LIMIT_PER_HOUR", "20"))
 
 
+def lookup_rate_limit_per_hour() -> int:
+    return int(os.getenv("LOOKUP_RATE_LIMIT_PER_HOUR", "200"))
+
+
 def cors_origins() -> list[str]:
     raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
     return [o.strip() for o in raw.split(",") if o.strip()]
