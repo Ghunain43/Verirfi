@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'fingerprint.dart';
 
 /// Error shape from API.md section 6: {"error": {"code", "message"}}.
 class ApiException implements Exception {
@@ -85,5 +86,48 @@ class ApiClient {
     }
     if (res.statusCode != 200) throw _toError(res);
     return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// Lookup previously checked claims by fingerprint prefix (privacy-preserving).
+  /// Returns a list of claims whose fingerprints start with the given 4-hex prefix.
+  Future<List<Map<String, dynamic>>> lookup(
+    String prefix, {
+    bool retried = false,
+  }) async {
+    final token = await _ensureToken();
+    final res = await http
+        .get(
+          Uri.parse('$base/api/v1/lookup/$prefix'),
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (res.statusCode == 401 && !retried) {
+      _token = null;
+      await _install();
+      return lookup(prefix, retried: true);
+    }
+    if (res.statusCode != 200) throw _toError(res);
+    
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return (data['entries'] as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Check if a claim exists in the cache by computing its fingerprint
+  /// and looking up the prefix. Returns the cached result if found.
+  Future<Map<String, dynamic>?> checkCached(String text) async {
+    final fp = computeFingerprint(text);
+    final prefix = fp.substring(0, 4);
+    final entries = await lookup(prefix);
+    
+    // Find exact match by full fingerprint
+    for (final entry in entries) {
+      if (entry['fingerprint'] == fp) {
+        return entry;
+      }
+    }
+    return null;
   }
 }

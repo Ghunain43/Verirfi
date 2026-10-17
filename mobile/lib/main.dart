@@ -1,14 +1,22 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'api_client.dart';
 import 'glass.dart';
+import 'normalize.dart';
+import 'ocr.dart';
 import 'result_card.dart';
+import 'splash.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize the normalize map for fingerprinting
+  initializeNormalizeMap();
+  
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -37,12 +45,109 @@ class VerifiApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: C.bg1,
       ),
-      home: const Home(),
+      home: SplashGate(next: const Home()),
     );
   }
 }
 
 enum Phase { idle, loading, done, error }
+
+/// What the error card shows for a failed check.
+class _ErrInfo {
+  const _ErrInfo({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.retryAfter,
+    this.canRetry = true,
+  });
+  final IconData icon;
+  final String title;
+  final String message;
+  final int? retryAfter;
+  final bool canRetry;
+}
+
+const int _maxChars = 2000;
+
+_ErrInfo _describe(Object e) {
+  if (e is ApiException) {
+    switch (e.code) {
+      case 'rate_limited':
+        return _ErrInfo(
+          icon: Icons.hourglass_top_rounded,
+          title: 'Too many checks',
+          message:
+              'You have reached the check limit for now. '
+              'You can try again when the timer ends.',
+          retryAfter: e.retryAfter ?? 30,
+        );
+      case 'invalid_input':
+        return const _ErrInfo(
+          icon: Icons.edit_off_rounded,
+          title: 'Can\u2019t check that text',
+          message:
+              'The text is empty or longer than 2000 characters. '
+              'Shorten it and try again.',
+          canRetry: false,
+        );
+      case 'upstream_failed':
+        return const _ErrInfo(
+          icon: Icons.cloud_off_rounded,
+          title: 'Sources are busy',
+          message:
+              'Our fact-checking sources didn\u2019t respond. '
+              'This is usually temporary, so try again.',
+        );
+      case 'timeout':
+        return const _ErrInfo(
+          icon: Icons.timer_off_rounded,
+          title: 'That took too long',
+          message: 'The check ran out of time. Try again, or shorten the text.',
+        );
+      case 'invalid_token':
+        return const _ErrInfo(
+          icon: Icons.lock_reset_rounded,
+          title: 'Couldn\u2019t start a session',
+          message:
+              'Verifi couldn\u2019t get a new anonymous session. '
+              'Try again.',
+        );
+    }
+    return const _ErrInfo(
+      icon: Icons.error_outline_rounded,
+      title: 'Something went wrong',
+      message: 'The server returned an unexpected error. Try again.',
+    );
+  }
+  if (e is TimeoutException) {
+    return const _ErrInfo(
+      icon: Icons.timer_off_rounded,
+      title: 'That took too long',
+      message: 'The server didn\u2019t answer in time. Try again.',
+    );
+  }
+  final s = e.toString();
+  if (e is http.ClientException ||
+      s.contains('SocketException') ||
+      s.contains('Failed host lookup')) {
+    return const _ErrInfo(
+      icon: Icons.wifi_off_rounded,
+      title: 'No connection',
+      message:
+          'Can\u2019t reach the Verifi server. '
+          'Check your internet connection and try again.',
+    );
+  }
+  return const _ErrInfo(
+    icon: Icons.error_outline_rounded,
+    title: 'Something went wrong',
+    message: 'Please try again.',
+  );
+}
+
+String _fmtSeconds(int s) =>
+    s >= 60 ? '${s ~/ 60}m ${(s % 60).toString().padLeft(2, '0')}s' : '${s}s';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -54,9 +159,12 @@ class _HomeState extends State<Home> {
   final _api = ApiClient();
   final _ctrl = TextEditingController();
   StreamSubscription? _sub;
+  Timer? _cooldownTimer;
   Phase _phase = Phase.idle;
   Map<String, dynamic>? _result;
-  String _error = '';
+  _ErrInfo? _err;
+  int _cooldown = 0;
+  bool _scanning = false;
   String _lastText = '';
   int _req = 0;
 
@@ -75,23 +183,78 @@ class _HomeState extends State<Home> {
         ReceiveSharingIntent.instance.reset();
         break;
       }
+      if (f.type == SharedMediaType.image && f.path.isNotEmpty) {
+        _scan(f.path);
+        ReceiveSharingIntent.instance.reset();
+        break;
+      }
     }
   }
 
-  String _friendly(Object e) {
-    final s = e.toString();
-    if (s.contains('TimeoutException')) {
-      return 'The check took too long. Please try again.';
+  Future<void> _pickAndScan() async {
+    final x = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (x == null || !mounted) return;
+    await _scan(x.path);
+  }
+
+  /// Reads a screenshot on the device, puts the text in the box and checks it.
+  Future<void> _scan(String path) async {
+    final id = ++_req;
+    _cooldownTimer?.cancel();
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _cooldown = 0;
+      _scanning = true;
+      _phase = Phase.loading;
+      _result = null;
+    });
+    try {
+      final text = await OcrService.instance.readImage(path);
+      if (!mounted || id != _req) return;
+      if (text.length < 8) {
+        setState(() {
+          _scanning = false;
+          _err = const _ErrInfo(
+            icon: Icons.image_not_supported_rounded,
+            title: 'No readable text found',
+            message:
+                'Scanning works for English and Roman Urdu. Urdu script '
+                'isn\u2019t supported yet, so paste that text instead.',
+            canRetry: false,
+          );
+          _phase = Phase.error;
+        });
+        return;
+      }
+      _ctrl.text = text;
+      await _check(text);
+    } catch (e) {
+      debugPrint('scan failed: $e');
+      if (!mounted || id != _req) return;
+      setState(() {
+        _scanning = false;
+        _err = const _ErrInfo(
+          icon: Icons.image_not_supported_rounded,
+          title: 'Couldn\u2019t read that image',
+          message: 'Try another screenshot, or paste the text instead.',
+          canRetry: false,
+        );
+        _phase = Phase.error;
+      });
     }
-    if (s.contains('SocketException') || s.contains('ClientException')) {
-      return 'Can\u2019t reach the Verifi server. Check your connection.';
-    }
-    if (s.contains('429')) return 'Too many checks. Wait a moment and retry.';
-    if (s.contains('400')) return 'That text can\u2019t be checked.';
-    if (s.contains('502') || s.contains('504')) {
-      return 'Our fact-checking sources are busy. Try again.';
-    }
-    return 'Something went wrong. Please try again.';
+  }
+
+  void _startCooldown(int seconds) {
+    _cooldownTimer?.cancel();
+    setState(() => _cooldown = seconds);
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _cooldown--);
+      if (_cooldown <= 0) t.cancel();
+    });
   }
 
   Future<void> _check(String text) async {
@@ -100,7 +263,28 @@ class _HomeState extends State<Home> {
     FocusManager.instance.primaryFocus?.unfocus();
     final id = ++_req;
     _lastText = t;
+    _cooldownTimer?.cancel();
+
+    // Don't send text the server will reject anyway.
+    if (t.length > _maxChars) {
+      setState(() {
+        _cooldown = 0;
+        _err = const _ErrInfo(
+          icon: Icons.edit_off_rounded,
+          title: 'That\u2019s too long',
+          message:
+              'Verifi checks up to 2000 characters at a time. '
+              'Trim the message down to the main claim and try again.',
+          canRetry: false,
+        );
+        _phase = Phase.error;
+      });
+      return;
+    }
+
     setState(() {
+      _cooldown = 0;
+      _scanning = false;
       _phase = Phase.loading;
       _result = null;
     });
@@ -115,18 +299,69 @@ class _HomeState extends State<Home> {
     } catch (e) {
       debugPrint('quickCheck failed: $e');
       if (!mounted || id != _req) return;
+      final info = _describe(e);
       setState(() {
-        _error = _friendly(e);
+        _err = info;
         _phase = Phase.error;
       });
+      if (info.retryAfter != null) _startCooldown(info.retryAfter!);
     }
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _cooldownTimer?.cancel();
     _ctrl.dispose();
     super.dispose();
+  }
+
+  Widget _errorCard() {
+    final e = _err!;
+    final waiting = _cooldown > 0;
+    return FadeSlideIn(
+      child: GlassCard(
+        radius: 28,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Icon(e.icon, size: 38, color: C.amber),
+            const SizedBox(height: 12),
+            Text(
+              e.title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: C.textHi,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              e.message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: C.textLo,
+                fontSize: 14.5,
+                height: 1.45,
+              ),
+            ),
+            if (e.canRetry) ...[
+              const SizedBox(height: 18),
+              GradientButton(
+                label: waiting
+                    ? 'Try again in ${_fmtSeconds(_cooldown)}'
+                    : 'Try again',
+                icon: waiting
+                    ? Icons.hourglass_top_rounded
+                    : Icons.refresh_rounded,
+                onPressed: waiting ? null : () => _check(_lastText),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _body() {
@@ -134,39 +369,17 @@ class _HomeState extends State<Home> {
       case Phase.idle:
         return const FadeSlideIn(child: _Hint());
       case Phase.loading:
-        return const _Skeleton();
-      case Phase.error:
-        return FadeSlideIn(
-          child: GlassCard(
-            radius: 28,
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                const Icon(Icons.wifi_off_rounded, size: 36, color: C.amber),
-                const SizedBox(height: 12),
-                Text(
-                  _error,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: C.textHi,
-                    fontSize: 15,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                GradientButton(
-                  label: 'Try again',
-                  icon: Icons.refresh_rounded,
-                  onPressed: () => _check(_lastText),
-                ),
-              ],
-            ),
-          ),
+        return _Skeleton(
+          label: _scanning
+              ? 'Reading the screenshot\u2026'
+              : 'Searching trusted sources\u2026',
         );
+      case Phase.error:
+        return _errorCard();
       case Phase.done:
         return KeyedSubtree(
           key: ValueKey(_req),
-          child: ResultView(data: _result!),
+          child: ResultView(data: _result!, onRetry: () => _check(_lastText)),
         );
     }
   }
@@ -211,7 +424,7 @@ class _HomeState extends State<Home> {
                       children: [
                         ValueListenableBuilder<TextEditingValue>(
                           valueListenable: _ctrl,
-                          builder: (_, v, __) => TextButton.icon(
+                          builder: (_, v, _) => TextButton.icon(
                             onPressed: () async {
                               if (v.text.isNotEmpty) {
                                 _ctrl.clear();
@@ -231,6 +444,18 @@ class _HomeState extends State<Home> {
                               v.text.isNotEmpty ? 'Clear' : 'Paste',
                               style: const TextStyle(color: C.textLo),
                             ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: loading ? null : _pickAndScan,
+                          icon: const Icon(
+                            Icons.image_search_rounded,
+                            size: 18,
+                            color: C.textLo,
+                          ),
+                          label: const Text(
+                            'Scan',
+                            style: TextStyle(color: C.textLo),
                           ),
                         ),
                         const Spacer(),
@@ -383,7 +608,8 @@ class _Chip extends StatelessWidget {
 }
 
 class _Skeleton extends StatelessWidget {
-  const _Skeleton();
+  const _Skeleton({this.label = 'Searching trusted sources\u2026'});
+  final String label;
 
   Widget _bar(double h, {double? w}) => Container(
     height: h,
@@ -434,10 +660,10 @@ class _Skeleton extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const Center(
+          Center(
             child: Text(
-              'Searching trusted sources\u2026',
-              style: TextStyle(color: C.textLo, fontSize: 13),
+              label,
+              style: const TextStyle(color: C.textLo, fontSize: 13),
             ),
           ),
           const SizedBox(height: 16),

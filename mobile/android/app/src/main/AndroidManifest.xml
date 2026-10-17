@@ -28,10 +28,25 @@
         </activity>
         <meta-data android:name="flutterEmbedding" android:value="2"/>
     </application>
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-    </queries>
+    
+<queries>
+    <!-- Text processing -->
+    <intent>
+        <action android:name="android.intent.action.PROCESS_TEXT" />
+        <data android:mimeType="text/plain" />
+    </intent>
+
+    <!-- Text-to-speech service -->
+    <intent>
+        <action android:name="android.intent.action.TTS_SERVICE" />
+    </intent>
+
+    <!-- Sending images -->
+    <intent>
+        <action android:name="android.intent.action.SEND" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:mimeType="image/*" />
+    </intent>
+</queries>
+
 </manifest>

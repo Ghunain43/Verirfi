@@ -1,7 +1,9 @@
 import 'dart:math' show min;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'glass.dart';
+import 'speaker.dart';
 
 String _pct(double v) => '${(v * 100).round()}%';
 
@@ -40,9 +42,31 @@ _Verdict _verdict(List<Map<String, dynamic>> ev, double hi) {
   );
 }
 
+/// What the phone reads aloud for a result.
+String _spokenSummary(
+  Map<String, dynamic> data,
+  _Verdict v,
+  double lo,
+  double hi,
+) {
+  final claim = (data['claim'] ?? '').toString();
+  final answer = (data['likely_answer'] ?? '').toString();
+  final buf = StringBuffer('${v.label}. ');
+  if (claim.isNotEmpty) buf.write('The claim: $claim. ');
+  buf.write(
+    'Confidence between ${(lo * 100).round()} and ${(hi * 100).round()} percent. ',
+  );
+  if (answer.isNotEmpty) buf.write('$answer ');
+  buf.write('This is not a verdict. Check the sources before you forward it.');
+  return buf.toString();
+}
+
 class ResultView extends StatelessWidget {
-  const ResultView({super.key, required this.data});
+  const ResultView({super.key, required this.data, this.onRetry});
   final Map<String, dynamic> data;
+
+  /// Called by the "Search again" button when no sources were found.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -93,6 +117,16 @@ class ResultView extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  const Text(
+                    'CLAIM CHECKED',
+                    style: TextStyle(
+                      color: C.textLo,
+                      fontSize: 11.5,
+                      letterSpacing: 1.4,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   Text(
                     '\u201C${data['claim'] ?? ''}\u201D',
                     style: const TextStyle(
@@ -133,6 +167,8 @@ class ResultView extends StatelessWidget {
                       ),
                     ),
                   ],
+                  const SizedBox(height: 10),
+                  _ListenButton(text: _spokenSummary(data, v, lo, hi)),
                 ],
               ),
             ),
@@ -141,29 +177,33 @@ class ResultView extends StatelessWidget {
         const SizedBox(height: 14),
         const FadeSlideIn(delayMs: 120, child: _Disclaimer()),
         const SizedBox(height: 22),
-        FadeSlideIn(
-          delayMs: 200,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 10),
-            child: Text(
-              'EVIDENCE \u00B7 ${evidence.length}',
-              style: const TextStyle(
-                color: C.textLo,
-                fontSize: 12,
-                letterSpacing: 1.4,
-                fontWeight: FontWeight.w700,
+        if (evidence.isEmpty)
+          FadeSlideIn(delayMs: 200, child: _NoEvidence(onRetry: onRetry))
+        else ...[
+          FadeSlideIn(
+            delayMs: 200,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 10),
+              child: Text(
+                'EVIDENCE \u00B7 ${evidence.length}   \u00B7   tap to open, hold to copy',
+                style: const TextStyle(
+                  color: C.textLo,
+                  fontSize: 12,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
-        ),
-        for (var i = 0; i < evidence.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: FadeSlideIn(
-              delayMs: min(260 + i * 70, 700),
-              child: _EvidenceTile(e: evidence[i]),
+          for (var i = 0; i < evidence.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: FadeSlideIn(
+                delayMs: min(260 + i * 70, 700),
+                child: _EvidenceTile(e: evidence[i]),
+              ),
             ),
-          ),
+        ],
       ],
     );
   }
@@ -187,7 +227,7 @@ class RangeMeter extends StatelessWidget {
           tween: Tween(begin: 0, end: 1),
           duration: const Duration(milliseconds: 900),
           curve: Curves.easeOutCubic,
-          builder: (_, t, __) => LayoutBuilder(
+          builder: (_, t, _) => LayoutBuilder(
             builder: (_, cons) {
               final w = cons.maxWidth;
               final width = (w * (hi - lo) * t).clamp(6.0, w).toDouble();
@@ -269,6 +309,74 @@ class _Disclaimer extends StatelessWidget {
   }
 }
 
+/// Shown instead of a bare "EVIDENCE 0" when no sources were found.
+class _NoEvidence extends StatelessWidget {
+  const _NoEvidence({this.onRetry});
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      blur: false,
+      radius: 22,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          const Icon(Icons.search_off_rounded, size: 34, color: C.textLo),
+          const SizedBox(height: 10),
+          const Text(
+            'No sources found',
+            style: TextStyle(
+              color: C.textHi,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'We couldn\u2019t find reliable sources for this claim. That doesn\u2019t '
+            'make it true or false. Don\u2019t forward it as fact until a trusted '
+            'source confirms it.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: C.textLo, fontSize: 14, height: 1.45),
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 16),
+            GradientButton(
+              label: 'Search again',
+              icon: Icons.refresh_rounded,
+              onPressed: onRetry,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _openSource(BuildContext context, String url) async {
+  final uri = Uri.tryParse(url);
+  var opened = false;
+  if (uri != null && (uri.scheme == 'https' || uri.scheme == 'http')) {
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      opened = false;
+    }
+  }
+  if (opened || !context.mounted) return;
+  await Clipboard.setData(ClipboardData(text: url));
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      const SnackBar(
+        content: Text('Couldn\u2019t open the link, so it was copied instead'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+}
+
 class _EvidenceTile extends StatelessWidget {
   const _EvidenceTile({required this.e});
   final Map<String, dynamic> e;
@@ -292,6 +400,8 @@ class _EvidenceTile extends StatelessWidget {
     final url = (e['url'] ?? '').toString();
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: url.isEmpty ? null : () => _openSource(context, url),
       onLongPress: url.isEmpty
           ? null
           : () {
@@ -329,6 +439,14 @@ class _EvidenceTile extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (url.isNotEmpty) ...[
+                  const Icon(
+                    Icons.open_in_new_rounded,
+                    size: 15,
+                    color: C.textLo,
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -467,6 +585,49 @@ class _NotCheckable extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Listen" / "Stop" button. Uses the phone's own text-to-speech.
+class _ListenButton extends StatefulWidget {
+  const _ListenButton({required this.text});
+  final String text;
+
+  @override
+  State<_ListenButton> createState() => _ListenButtonState();
+}
+
+class _ListenButtonState extends State<_ListenButton> {
+  @override
+  void dispose() {
+    Speaker.instance.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: Speaker.instance.speaking,
+      builder: (_, on, _) => TextButton.icon(
+        style: TextButton.styleFrom(padding: EdgeInsets.zero),
+        onPressed: () {
+          if (on) {
+            Speaker.instance.stop();
+          } else {
+            Speaker.instance.speak(widget.text);
+          }
+        },
+        icon: Icon(
+          on ? Icons.stop_circle_outlined : Icons.volume_up_rounded,
+          size: 20,
+          color: C.accent,
+        ),
+        label: Text(
+          on ? 'Stop' : 'Listen',
+          style: const TextStyle(color: C.accent),
         ),
       ),
     );
