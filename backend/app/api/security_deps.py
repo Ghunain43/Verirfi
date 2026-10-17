@@ -9,7 +9,7 @@ from backend.app.api import settings
 from backend.app.api.errors import ApiError
 
 _tokens: dict[str, float] = {}               # token -> expiry (unix seconds)
-_hits: dict[str, deque] = defaultdict(deque)  # token -> timestamps of quick-checks
+_hits: dict[str, deque] = defaultdict(deque)  # "kind:token" -> timestamps
 
 
 def issue_token() -> str:
@@ -29,13 +29,15 @@ def require_token(authorization: str | None = Header(default=None)) -> str:
     return token
 
 
-def check_rate_limit(token: str) -> None:
+def check_rate_limit(token: str, kind: str = "quick-check") -> None:
+    """Sliding one-hour window per token. Each kind of call has its own counter and limit."""
+    limit = settings.rate_limit_per_hour() if kind == "quick-check" else settings.lookup_rate_limit_per_hour()
     now = time.time()
     window = 3600
-    q = _hits[token]
+    q = _hits[f"{kind}:{token}"]
     while q and q[0] <= now - window:
         q.popleft()
-    if len(q) >= settings.rate_limit_per_hour():
+    if len(q) >= limit:
         retry_after = max(1, int(q[0] + window - now))
         raise ApiError(429, "rate_limited", "Too many requests. Try again later.",
                        headers={"Retry-After": str(retry_after)})

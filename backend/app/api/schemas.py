@@ -47,3 +47,18 @@ class QuickCheckResponse(BaseModel):
     fingerprint: str
     cached: bool = False
     took_ms: int
+
+
+class LookupEntry(BaseModel):
+    fingerprint: str
+    claim: str
+    likely_answer: Optional[str] = None
+    confidence_low: float = 0.0
+    confidence_high: float = 0.0
+    evidence: list[Evidence] = []
+    checked_at: str
+
+
+class LookupResponse(BaseModel):
+    prefix: str
+    entries: list[LookupEntry]

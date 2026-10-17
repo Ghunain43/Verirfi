@@ -5,6 +5,7 @@ import time
 from fastapi import APIRouter, Depends
 
 from backend.app.api import settings
+from backend.app.api.claim_cache import RESULT_KEYS, cache
 from backend.app.api.errors import ApiError
 from backend.app.api.mock import mock_response
 from backend.app.api.schemas import QuickCheckRequest, QuickCheckResponse
@@ -26,6 +27,10 @@ except ImportError as exc:  # e.g. a dependency is missing
 router = APIRouter()
 
 
+def _ms(start: float) -> int:
+    return int((time.perf_counter() - start) * 1000)
+
+
 @router.post("/quick-check", response_model=QuickCheckResponse)
 async def quick_check(req: QuickCheckRequest, token: str = Depends(require_token)):
     check_rate_limit(token)
@@ -34,6 +39,14 @@ async def quick_check(req: QuickCheckRequest, token: str = Depends(require_token
         return mock_response(req.text)
 
     start = time.perf_counter()
+    # Fingerprint of the text exactly as selected, so it matches what clients compute.
+    fingerprint = compute_fingerprint(req.text)
+
+    hit = cache.get(fingerprint)
+    if hit is not None:  # same claim already checked: skip the slow, paid research
+        fields = {k: hit[k] for k in RESULT_KEYS if k in hit}
+        return QuickCheckResponse(**fields, fingerprint=fingerprint, cached=True, took_ms=_ms(start))
+
     try:
         result = await asyncio.wait_for(
             run_quick_check(req.text, req.lang),
@@ -53,9 +66,8 @@ async def quick_check(req: QuickCheckRequest, token: str = Depends(require_token
         log.error("agent failure: %s", type(e).__name__)
         raise ApiError(502, "upstream_failed", "Research provider failed.")
 
-    return QuickCheckResponse(
-        **result.model_dump(),
-        fingerprint=compute_fingerprint(req.text),
-        cached=False,
-        took_ms=int((time.perf_counter() - start) * 1000),
-    )
+    data = result.model_dump()
+    if data["checkable"]:  # opinions, satire etc. have no verdict worth caching
+        cache.put(fingerprint, data)
+
+    return QuickCheckResponse(**data, fingerprint=fingerprint, cached=False, took_ms=_ms(start))
