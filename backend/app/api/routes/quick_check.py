@@ -55,7 +55,7 @@ async def quick_check(req: QuickCheckRequest, token: str = Depends(require_token
 
     return QuickCheckResponse(
         **result.model_dump(),
-        fingerprint=compute_fingerprint(result.claim),
+        fingerprint=compute_fingerprint(req.text),
         cached=False,
         took_ms=int((time.perf_counter() - start) * 1000),
     )
