@@ -39,15 +39,15 @@ int _fmix64(int h) {
 
 List<String> _shingles(String normalized) {
   final tokens = normalized.isEmpty ? <String>[] : normalized.split(' ');
-  
+
   if (tokens.isEmpty) {
     return [];
   }
-  
+
   if (tokens.length < 3) {
     return [tokens.join(' ')];
   }
-  
+
   final result = <String>[];
   for (int i = 0; i <= tokens.length - 3; i++) {
     result.add([tokens[i], tokens[i + 1], tokens[i + 2]].join(' '));
@@ -57,32 +57,43 @@ List<String> _shingles(String normalized) {
 
 int simhash64(String normalized) {
   final counts = List<int>.filled(64, 0);
-  
+
   for (final sh in _shingles(normalized)) {
     final h = _fmix64(_fnv1a64(utf8.encode(sh)));
     for (int i = 0; i < 64; i++) {
       counts[i] += ((h >>> i) & 1) == 1 ? 1 : -1;
     }
   }
-  
+
   int out = 0;
   for (int i = 0; i < 64; i++) {
     if (counts[i] > 0) {
       out |= 1 << i;
     }
   }
-  
+
   return out;
+}
+
+String toHex64(int v) =>
+    BigInt.from(v).toUnsigned(64).toRadixString(16).padLeft(16, '0');
+
+int _popCount64(int x) {
+  var c = 0;
+  for (var i = 0; i < 64; i++) {
+    if (((x >>> i) & 1) == 1) c++;
+  }
+  return c;
 }
 
 String simhashHex(String normalized) {
   final hash = simhash64(normalized);
-  return hash.toRadixString(16).padLeft(16, '0');
+  return toHex64(hash);
 }
 
 int hamming(String aHex, String bHex) {
-  final xor = int.parse(aHex, radix: 16) ^ int.parse(bHex, radix: 16);
-  return xor.toRadixString(2).replaceAll('0', '').length;
+  final x = BigInt.parse(aHex, radix: 16) ^ BigInt.parse(bHex, radix: 16);
+  return _popCount64(x.toSigned(64).toInt());
 }
 
 String prefix(String fpHex) {
