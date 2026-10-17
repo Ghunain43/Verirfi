@@ -25,12 +25,14 @@ export default function FactCheckerPage() {
     } catch (err) {
       const code = err instanceof ApiError ? err.status : 0;
       setErrMsg(
-        code === 401 || code === 403
-          ? "The API key was not accepted."
-          : code === 400
-          ? "Some fields are not valid. Check the fingerprint and link."
-          : "Couldn't send. Please try again."
-      );
+  code === 401 || code === 403
+    ? "The API key was not accepted."
+    : code === 429
+    ? "Too many failed attempts. Please wait before trying again."
+    : code === 400
+    ? "Some fields are not valid. Check the fingerprint and link."
+    : "Couldn't send. Please try again."
+);
       setStatus("error");
     }
   }

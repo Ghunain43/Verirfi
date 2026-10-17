@@ -15,7 +15,7 @@ export async function submitFactcheck(apiKey: string, s: FactcheckSubmission): P
   // TODO: confirm the auth header name and body format with Sharjeel
   const res = await fetch(`${BASE}/factcheck`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+   headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
     body: JSON.stringify(s),
   });
   if (!res.ok) throw await toError(res);
