@@ -50,6 +50,14 @@ class QuickCheckResponse(BaseModel):
     took_ms: int
 
 
+class SignedFactCheck(BaseModel):
+    """Verify `signature` (Ed25519, base64) over the exact UTF-8 bytes of `payload`, then JSON-parse `payload`."""
+    id: str
+    payload: str
+    signature: str
+    key_id: str
+
+
 class LookupEntry(BaseModel):
     fingerprint: str
     claim: str
@@ -58,6 +66,7 @@ class LookupEntry(BaseModel):
     confidence_high: float = 0.0
     evidence: list[Evidence] = []
     checked_at: str
+    factchecks: list[SignedFactCheck] = []
 
 
 class LookupResponse(BaseModel):
@@ -102,3 +111,52 @@ class RadarItem(BaseModel):
 
 class RadarResponse(BaseModel):
     items: list[RadarItem]
+
+
+class FactCheckRequest(BaseModel):
+    fingerprint: str
+    claim: str
+    rating: Literal["false", "mostly_false", "mixed", "mostly_true", "true", "unproven"]
+    summary: str
+    source_url: str
+
+    @field_validator("fingerprint")
+    @classmethod
+    def fingerprint_ok(cls, v: str) -> str:
+        if not re.fullmatch(r"[0-9a-fA-F]{16}", v):
+            raise ValueError("fingerprint must be 16 hex characters")
+        return v.lower()
+
+    @field_validator("claim")
+    @classmethod
+    def claim_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not 1 <= len(v) <= 300:
+            raise ValueError("claim must be 1-300 characters")
+        return v
+
+    @field_validator("summary")
+    @classmethod
+    def summary_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not 1 <= len(v) <= 800:
+            raise ValueError("summary must be 1-800 characters")
+        return v
+
+    @field_validator("source_url")
+    @classmethod
+    def url_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not v.startswith("https://") or len(v) > 500 or " " in v:
+            raise ValueError("source_url must be an https:// link")
+        return v
+
+
+class FactCheckList(BaseModel):
+    items: list[SignedFactCheck]
+
+
+class PublicKeyResponse(BaseModel):
+    key_id: str
+    algorithm: str
+    public_key: str

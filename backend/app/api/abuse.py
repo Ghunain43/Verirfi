@@ -49,12 +49,14 @@ class AbuseGuard:
         self._strikes: dict[str, deque] = defaultdict(deque)    # token -> strike times
         self._blocked: dict[str, float] = {}                    # token -> blocked until (unix seconds)
         self._recent: dict[str, deque] = defaultdict(lambda: deque(maxlen=100))  # token -> (time, fingerprint int)
+        self._key_failures: dict[str, deque] = defaultdict(deque)  # hashed network -> wrong-API-key times
 
     def reset(self) -> None:
         self._installs.clear()
         self._strikes.clear()
         self._blocked.clear()
         self._recent.clear()
+        self._key_failures.clear()
 
     def _hash(self, value: str) -> str:
         return hmac.new(self._secret, value.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
@@ -91,6 +93,19 @@ class AbuseGuard:
         if len(q) >= settings.abuse_strike_limit():
             self._blocked[token] = now + settings.abuse_block_seconds()
             q.clear()
+
+    # ---- rule 4: guessing fact-checker API keys ----
+    def check_key_failures(self, network: str) -> None:
+        now = time.time()
+        q = self._key_failures[self._hash("key:" + network)]
+        while q and q[0] <= now - WINDOW:
+            q.popleft()
+        if len(q) >= settings.key_failure_limit():
+            raise ApiError(429, "rate_limited", "Too many failed attempts from this network. Try again later.",
+                           headers=_retry(q[0] + WINDOW - now))
+
+    def key_failure(self, network: str) -> None:
+        self._key_failures[self._hash("key:" + network)].append(time.time())
 
     # ---- rule 3: flood of near-identical claims ----
     def check_near_duplicates(self, token: str, fingerprint_hex: str) -> None:

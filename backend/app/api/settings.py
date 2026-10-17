@@ -62,6 +62,30 @@ def trust_proxy() -> bool:
     return os.getenv("TRUST_PROXY", "false").lower() == "true"
 
 
+def factcheck_keys() -> dict:
+    """FACTCHECK_API_KEYS="Dawn Fact Desk:<key>,AFP Urdu:<key>" -> {name: key}. Keys under 16 chars are ignored."""
+    out = {}
+    for part in os.getenv("FACTCHECK_API_KEYS", "").split(","):
+        part = part.strip()
+        if ":" not in part:
+            continue
+        name, key = part.rsplit(":", 1)
+        name, key = name.strip(), key.strip()
+        if name and len(key) >= 16:
+            out[name] = key
+    return out
+
+
+def factcheck_signing_key():
+    """Base64 Ed25519 seed (see backend/scripts/make_signing_key.py). Unset = new random key per restart."""
+    return os.getenv("FACTCHECK_SIGNING_KEY", "").strip() or None
+
+
+def key_failure_limit() -> int:
+    """Wrong fact-checker API keys allowed per network per hour before that network is locked out."""
+    return int(os.getenv("FACTCHECK_KEY_FAILURE_LIMIT", "10"))
+
+
 def cors_origins() -> list[str]:
     raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
     return [o.strip() for o in raw.split(",") if o.strip()]
