@@ -5,7 +5,7 @@
 <h1 align="center">Veritus AI</h1>
 <p align="center"><b>Check it before you share it.</b><br/>
 A privacy-first misinformation checker for the web, Android and Chrome.<br/>
-Built by team <b>Neural Nomads</b> for Code//Connect '26 (Problem 03: Misinformation Control).</p>
+Built by team <b>Bug Beaters</b> for Code//Connect '26 (Problem 03: Misinformation Control).</p>
 
 <p align="center">
   <a href="https://veritusai.netlify.app"><img alt="Live web app" src="https://img.shields.io/badge/Web-live-22d3ee?style=for-the-badge&logo=netlify&logoColor=white"></a>
@@ -428,7 +428,7 @@ Check `NEXT_PUBLIC_API_BASE` (it must include `/api/v1`), then check `CORS_ORIGI
 
 ## 👥 Team
 
-**Neural Nomads**
+**Bug Beaters**
 
 | Who | Area |
 | --- | --- |
