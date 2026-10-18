@@ -1,0 +1,6 @@
+{
+ "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+ "key_id": "56475aa75463474c",
+ "payload": "{\"claim\":\"Hot water cures dengue.\",\"fingerprint\":\"a3f19c2b7d4e8a01\",\"id\":\"00000000000000000000000000000000\",\"published_at\":\"2026-10-17T10:00:00Z\",\"publisher\":\"Dawn Fact Desk\",\"rating\":\"false\",\"source_url\":\"https://example.org/x\",\"summary\":\"No. یہ درست نہیں.\",\"v\":1}",
+ "signature": "5ugY5u3pNlIF15vMz5Ibo51k2L9l5sX6rS3SMln7RD6nJNFHmf3QJgbd0hKxjQ2wo2sBFuNulaP3vpQojG0jBA=="
+}
