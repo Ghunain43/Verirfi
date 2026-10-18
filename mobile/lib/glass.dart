@@ -1,13 +1,16 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
+/// App name, shown in the splash and on the home page.
+const String kAppName = 'Veritus AI';
+
 /// Design tokens.
 class C {
-  static const bg1 = Color(0xFF0A0F24);
-  static const bg2 = Color(0xFF111A3B);
-  static const bg3 = Color(0xFF1B1245);
-  static const accent = Color(0xFF6C8CFF);
-  static const accent2 = Color(0xFF8B5CF6);
+  static const bg1 = Color(0xFF05060F);
+  static const bg2 = Color(0xFF0A0F24);
+  static const bg3 = Color(0xFF130E38);
+  static const accent = Color(0xFF6366F1);
+  static const accent2 = Color(0xFFA855F7);
   static const cyan = Color(0xFF22D3EE);
   static const good = Color(0xFF34D399);
   static const bad = Color(0xFFF87171);
@@ -317,7 +320,7 @@ class GradientButton extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: br,
-          gradient: const LinearGradient(colors: [C.accent, C.accent2]),
+          gradient: const LinearGradient(colors: [C.cyan, C.accent, C.accent2]),
           boxShadow: [
             BoxShadow(
               color: C.accent2.withValues(alpha: 0.45),
@@ -354,6 +357,73 @@ class GradientButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Cyan to violet gradient text, like the headings on the website.
+class GradientText extends StatelessWidget {
+  const GradientText(
+    this.text, {
+    super.key,
+    required this.style,
+    this.textAlign = TextAlign.start,
+  });
+  final String text;
+  final TextStyle style;
+  final TextAlign textAlign;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      blendMode: BlendMode.srcIn,
+      shaderCallback: (r) => const LinearGradient(
+        colors: [C.cyan, Color(0xFF60A5FA), C.accent2],
+      ).createShader(r),
+      child: Text(
+        text,
+        textAlign: textAlign,
+        style: style.copyWith(color: Colors.white),
+      ),
+    );
+  }
+}
+
+/// Page title with a gradient accent word and a muted subtitle.
+class PageHeader extends StatelessWidget {
+  const PageHeader({
+    super.key,
+    required this.title,
+    required this.accent,
+    required this.subtitle,
+  });
+  final String title;
+  final String accent;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    const st = TextStyle(
+      fontSize: 30,
+      fontWeight: FontWeight.w800,
+      letterSpacing: -0.4,
+      height: 1.15,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('$title ', style: st.copyWith(color: C.textHi)),
+            GradientText(accent, style: st),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          subtitle,
+          style: const TextStyle(color: C.textLo, fontSize: 14, height: 1.4),
+        ),
+      ],
     );
   }
 }

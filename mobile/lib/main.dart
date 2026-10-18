@@ -9,14 +9,15 @@ import 'glass.dart';
 import 'normalize.dart';
 import 'ocr.dart';
 import 'result_card.dart';
+import 'shell.dart';
 import 'splash.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize the normalize map for fingerprinting
   initializeNormalizeMap();
-  
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -35,7 +36,7 @@ class VerifiApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Verifi',
+      title: kAppName,
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
@@ -45,7 +46,7 @@ class VerifiApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: C.bg1,
       ),
-      home: SplashGate(next: const Home()),
+      home: SplashGate(next: const Shell()),
     );
   }
 }
@@ -149,13 +150,17 @@ _ErrInfo _describe(Object e) {
 String _fmtSeconds(int s) =>
     s >= 60 ? '${s ~/ 60}m ${(s % 60).toString().padLeft(2, '0')}s' : '${s}s';
 
-class Home extends StatefulWidget {
-  const Home({super.key});
+class CheckPage extends StatefulWidget {
+  const CheckPage({super.key, this.onShared});
+
+  /// Called when text or an image is shared into the app, so the shell can show this tab.
+  final VoidCallback? onShared;
+
   @override
-  State<Home> createState() => _HomeState();
+  State<CheckPage> createState() => _CheckPageState();
 }
 
-class _HomeState extends State<Home> {
+class _CheckPageState extends State<CheckPage> {
   final _api = ApiClient();
   final _ctrl = TextEditingController();
   StreamSubscription? _sub;
@@ -178,12 +183,14 @@ class _HomeState extends State<Home> {
   void _onShared(List<SharedMediaFile> files) {
     for (final f in files) {
       if (f.type == SharedMediaType.text && f.path.trim().isNotEmpty) {
+        widget.onShared?.call();
         _ctrl.text = f.path;
         _check(f.path);
         ReceiveSharingIntent.instance.reset();
         break;
       }
       if (f.type == SharedMediaType.image && f.path.isNotEmpty) {
+        widget.onShared?.call();
         _scan(f.path);
         ReceiveSharingIntent.instance.reset();
         break;
@@ -387,149 +394,95 @@ class _HomeState extends State<Home> {
   @override
   Widget build(BuildContext context) {
     final loading = _phase == Phase.loading;
-    return Scaffold(
-      body: GlassBackground(
-        child: SafeArea(
-          child: ListView(
-            physics: const BouncingScrollPhysics(),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-            children: [
-              const _Header(),
-              const SizedBox(height: 22),
-              GlassCard(
-                radius: 24,
-                padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
-                child: Column(
+    return SafeArea(
+      child: ListView(
+        physics: const BouncingScrollPhysics(),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+        children: [
+          const PageHeader(
+            title: 'Check a',
+            accent: 'claim',
+            subtitle:
+                'Paste a message, headline or forward. We weigh it against real sources.',
+          ),
+          const SizedBox(height: 20),
+          GlassCard(
+            radius: 24,
+            padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _ctrl,
+                  minLines: 2,
+                  maxLines: 5,
+                  style: const TextStyle(
+                    color: C.textHi,
+                    fontSize: 16,
+                    height: 1.4,
+                  ),
+                  cursorColor: C.accent,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    hintText: 'Paste a forward or type a claim\u2026',
+                    hintStyle: TextStyle(color: C.textLo),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
                   children: [
-                    TextField(
-                      controller: _ctrl,
-                      minLines: 2,
-                      maxLines: 5,
-                      style: const TextStyle(
-                        color: C.textHi,
-                        fontSize: 16,
-                        height: 1.4,
-                      ),
-                      cursorColor: C.accent,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        isDense: true,
-                        hintText: 'Paste a forward or type a claim\u2026',
-                        hintStyle: TextStyle(color: C.textLo),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _ctrl,
+                      builder: (_, v, _) => TextButton.icon(
+                        onPressed: () async {
+                          if (v.text.isNotEmpty) {
+                            _ctrl.clear();
+                          } else {
+                            final d = await Clipboard.getData('text/plain');
+                            if (d?.text != null) _ctrl.text = d!.text!;
+                          }
+                        },
+                        icon: Icon(
+                          v.text.isNotEmpty
+                              ? Icons.close_rounded
+                              : Icons.content_paste_rounded,
+                          size: 18,
+                          color: C.textLo,
+                        ),
+                        label: Text(
+                          v.text.isNotEmpty ? 'Clear' : 'Paste',
+                          style: const TextStyle(color: C.textLo),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        ValueListenableBuilder<TextEditingValue>(
-                          valueListenable: _ctrl,
-                          builder: (_, v, _) => TextButton.icon(
-                            onPressed: () async {
-                              if (v.text.isNotEmpty) {
-                                _ctrl.clear();
-                              } else {
-                                final d = await Clipboard.getData('text/plain');
-                                if (d?.text != null) _ctrl.text = d!.text!;
-                              }
-                            },
-                            icon: Icon(
-                              v.text.isNotEmpty
-                                  ? Icons.close_rounded
-                                  : Icons.content_paste_rounded,
-                              size: 18,
-                              color: C.textLo,
-                            ),
-                            label: Text(
-                              v.text.isNotEmpty ? 'Clear' : 'Paste',
-                              style: const TextStyle(color: C.textLo),
-                            ),
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: loading ? null : _pickAndScan,
-                          icon: const Icon(
-                            Icons.image_search_rounded,
-                            size: 18,
-                            color: C.textLo,
-                          ),
-                          label: const Text(
-                            'Scan',
-                            style: TextStyle(color: C.textLo),
-                          ),
-                        ),
-                        const Spacer(),
-                        GradientButton(
-                          label: loading ? 'Checking\u2026' : 'Check',
-                          icon: Icons.search_rounded,
-                          onPressed: loading ? null : () => _check(_ctrl.text),
-                        ),
-                      ],
+                    TextButton.icon(
+                      onPressed: loading ? null : _pickAndScan,
+                      icon: const Icon(
+                        Icons.image_search_rounded,
+                        size: 18,
+                        color: C.textLo,
+                      ),
+                      label: const Text(
+                        'Scan',
+                        style: TextStyle(color: C.textLo),
+                      ),
+                    ),
+                    const Spacer(),
+                    GradientButton(
+                      label: loading ? 'Checking\u2026' : 'Check',
+                      icon: Icons.search_rounded,
+                      onPressed: loading ? null : () => _check(_ctrl.text),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 22),
-              _body(),
-            ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(height: 22),
+          _body(),
+        ],
       ),
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  const _Header();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [C.accent, C.accent2],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: C.accent2.withValues(alpha: 0.5),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.verified_user_rounded,
-            color: Colors.white,
-            size: 26,
-          ),
-        ),
-        const SizedBox(width: 14),
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Verifi',
-              style: TextStyle(
-                color: C.textHi,
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.4,
-              ),
-            ),
-            Text(
-              'Check before you forward',
-              style: TextStyle(color: C.textLo, fontSize: 13),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }
