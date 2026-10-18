@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Veritus AI",
+  "version": "1.0.0",
+  "description": "Check a claim against real sources before you share it. Select text on any page and check it in one click.",
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "action": { "default_title": "Veritus AI", "default_popup": "popup.html", "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png" } },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["storage", "contextMenus", "activeTab", "scripting"],
+  "host_permissions": ["https://verifi.fastapicloud.dev/*"]
+}

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Veritus AI</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <img src="icons/48.png" alt="" width="32" height="32" />
+    <h1>Veritus <span class="grad">AI</span></h1>
+    <nav>
+      <button id="tab-check" class="tab active">Check</button>
+      <button id="tab-radar" class="tab">Radar</button>
+    </nav>
+  </header>
+
+  <main id="view-check">
+    <div class="glass">
+      <textarea id="text" rows="5" maxlength="2000" placeholder="Paste a claim, or select text on a page and open this."></textarea>
+      <div class="row"><span id="count">0/2000</span><button id="go" class="primary" disabled>Check</button></div>
+    </div>
+    <div id="out"></div>
+    <p class="foot">Your text is never saved or logged.</p>
+  </main>
+
+  <main id="view-radar" hidden>
+    <p class="sub">False claims spreading right now, and why each one is listed.</p>
+    <div id="radar"></div>
+  </main>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
