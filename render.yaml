@@ -1,0 +1,29 @@
+# Render Blueprint: New + > Blueprint > pick this repo. Free plan sleeps after 15 min idle.
+services:
+  - type: web
+    name: verifi-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    # ONE worker only: tokens, rate limits, claim cache and radar live in memory.
+    startCommand: uvicorn backend.app.api.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8        # if Render rejects it, use any 3.12.x it lists
+      - key: MOCK_MODE
+        value: "false"
+      - key: RADAR_TRUST_FORWARDED
+        value: "true"
+      - key: RADAR_SALT
+        generateValue: true
+      - key: TOKEN_SECRET
+        generateValue: true
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: CORS_ORIGINS    # your Vercel URL(s), comma-separated, no trailing slash
+        sync: false

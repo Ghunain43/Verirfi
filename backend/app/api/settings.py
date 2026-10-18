@@ -36,6 +36,10 @@ def radar_trust_forwarded() -> bool:
     return os.getenv("RADAR_TRUST_FORWARDED", "false").lower() == "true"
 
 
+def radar_proxy_hops() -> int:
+    return max(1, int(os.getenv("RADAR_PROXY_HOPS", "1")))  # trusted reverse proxies in front of the app
+
+
 def radar_salt() -> str:
     return os.getenv("RADAR_SALT", "dev-only-change-me")
 

@@ -203,3 +203,19 @@ async def test_web_radar_is_cached_and_survives_failure(monkeypatch):
     web_radar.reset_state()
     monkeypatch.setattr(web_radar, "LLMClient", Broken)
     assert await web_radar.top_false_claims(5) == []  # never raises
+
+
+def test_spoofed_forwarded_header_cannot_fake_networks():
+    # a client prepends fake addresses; the proxy appends the real one last
+    for i in range(12):
+        check(token(), f"6.6.{i}.1, 198.51.100.9")
+    assert radar(token()).json()["items"] == []  # all 12 installs share one real network
+
+
+def test_tokens_are_signed_and_tamper_proof(monkeypatch):
+    t = token()
+    assert radar(t).status_code == 200
+    assert radar(t[:-1] + ("0" if t[-1] != "0" else "1")).status_code == 401   # bad signature
+    assert radar("12345.abc.def").status_code == 401
+    monkeypatch.setenv("TOKEN_SECRET", "another-secret")
+    assert radar(t).status_code == 401   # signed with a different secret

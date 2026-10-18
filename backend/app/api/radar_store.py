@@ -40,7 +40,11 @@ def client_ip(request) -> Optional[str]:
     if settings.radar_trust_forwarded():
         fwd = request.headers.get("x-forwarded-for")
         if fwd:
-            return fwd.split(",")[0].strip()
+            # Each trusted proxy appends the address it saw. Anything before that is client-supplied and
+            # spoofable, so count from the right: with 1 proxy, the last entry is the real client.
+            parts = [p.strip() for p in fwd.split(",") if p.strip()]
+            if parts:
+                return parts[max(len(parts) - settings.radar_proxy_hops(), 0)]
     return request.client.host if request.client else None
 
 

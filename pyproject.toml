@@ -1,8 +1,14 @@
-   [project]
-   name = "verifi"
-   version = "0.1.0"
-   requires-python = ">=3.11"
-   dependencies = ["fastapi[standard]>=0.115", "aiohttp>=3.9", "python-dotenv>=1.0", "pydantic>=2"]
+[project]
+name = "verifi"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["fastapi[standard]>=0.115", "aiohttp>=3.9", "python-dotenv>=1.0", "pydantic>=2"]
 
-   [tool.fastapi]
-   entrypoint = "backend.app.api.main:app"
+[tool.fastapi]
+entrypoint = "backend.app.api.main:app"
+
+[tool.setuptools]
+py-modules = []
+
+[tool.uv]
+package = false

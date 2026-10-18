@@ -1,4 +1,7 @@
-"""Install tokens + rate limiting. In-memory for now; move to security/ when it grows."""
+"""Install tokens (signed, stateless) + rate limiting (in-memory, per instance)."""
+import hashlib
+import hmac
+import os
 import secrets
 import time
 from collections import defaultdict, deque
@@ -8,23 +11,29 @@ from fastapi import Header
 from backend.app.api import settings
 from backend.app.api.errors import ApiError
 
-_tokens: dict[str, float] = {}               # token -> expiry (unix seconds)
+_fallback_secret = secrets.token_hex(32)     # used only when TOKEN_SECRET is not set (dev)
 _hits: dict[str, deque] = defaultdict(deque)  # "kind:token" -> timestamps
 
 
+def _sign(body: str) -> str:
+    key = (os.getenv("TOKEN_SECRET") or _fallback_secret).encode()
+    return hmac.new(key, body.encode(), hashlib.sha256).hexdigest()[:40]
+
+
 def issue_token() -> str:
-    token = secrets.token_urlsafe(32)
-    _tokens[token] = time.time() + settings.TOKEN_TTL_SECONDS
-    return token
+    """Signed, self-validating token (expiry.nonce.signature). Nothing is stored server-side, so every
+    replica accepts it and a restart or scale-to-zero does not invalidate it (set TOKEN_SECRET in production)."""
+    body = f"{int(time.time()) + settings.TOKEN_TTL_SECONDS}.{secrets.token_urlsafe(16)}"
+    return f"{body}.{_sign(body)}"
 
 
 def require_token(authorization: str | None = Header(default=None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise ApiError(401, "invalid_token", "Missing install token.")
     token = authorization[len("Bearer "):].strip()
-    expiry = _tokens.get(token)
-    if expiry is None or expiry < time.time():
-        _tokens.pop(token, None)
+    body, _, sig = token.rpartition(".")
+    exp = body.split(".", 1)[0]
+    if not body or not exp.isdigit() or not hmac.compare_digest(sig, _sign(body)) or int(exp) < time.time():
         raise ApiError(401, "invalid_token", "Invalid or expired install token.")
     return token
 
@@ -45,5 +54,4 @@ def check_rate_limit(token: str, kind: str = "quick-check") -> None:
 
 
 def reset_state() -> None:  # for tests
-    _tokens.clear()
     _hits.clear()
