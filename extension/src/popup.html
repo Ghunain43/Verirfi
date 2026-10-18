@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 340px; margin: 0; padding: 14px; font: 14px/1.45 system-ui, sans-serif; color: #202124; }
+    h1 { font-size: 16px; margin: 0 0 8px; color: #1a73e8; }
+    label { display: block; font-weight: 600; margin: 10px 0 4px; }
+    input[type=text] { width: 100%; box-sizing: border-box; padding: 6px; }
+    button { margin-top: 6px; padding: 6px 10px; cursor: pointer; }
+    .row { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; }
+    .row input { margin-top: 4px; }
+    .small { font-size: 12px; color: #5f6368; margin: 4px 0; }
+    #status.ok { color: #137333; } #status.bad { color: #b31412; }
+  </style>
+</head>
+<body>
+  <h1>Verifi</h1>
+  <p class="small">Select text on any page and press <b>Check with Verifi</b>. Claims already checked are found without sending your text anywhere.</p>
+  <p id="status" class="small">Checking server&hellip;</p>
+
+  <label for="base">Server address</label>
+  <input id="base" type="text" spellcheck="false">
+  <button id="save">Save</button>
+  <p id="msg" class="small"></p>
+
+  <div class="row">
+    <input id="compose" type="checkbox">
+    <div>
+      <b>Underline known claims while I type</b>
+      <div class="small">Off by default. When on, a 4-character hash prefix of each sentence you type in a message box is sent to the server.</div>
+    </div>
+  </div>
+
+  <button id="resetkey">Reset pinned fact-checker key</button>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
