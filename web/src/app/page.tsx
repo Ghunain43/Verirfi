@@ -26,6 +26,10 @@ export default function Home() {
           <Link href="/check" className="btn-primary rounded-2xl px-7 py-3.5 text-base font-semibold">Check a claim</Link>
           <Link href="/radar" className="btn-ghost rounded-2xl px-7 py-3.5 text-base font-medium">View Rumor Radar</Link>
         </div>
+        <div className="mt-4 flex flex-wrap justify-center gap-3 text-sm">
+          <Link href="/factcheck" className="btn-ghost rounded-xl px-5 py-2.5 text-white/70">🔒 Fact-check</Link>
+          <Link href="/admin" className="btn-ghost rounded-xl px-5 py-2.5 text-white/70">🔒 Admin</Link>
+        </div>
       </section>
 
       <section className="mx-auto mt-24 grid max-w-5xl gap-5 sm:grid-cols-3">

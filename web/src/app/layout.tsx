@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import ParticleField from "@/components/ParticleField";
 import Nav from "@/components/Nav";
 
+
 export const metadata: Metadata = {
   title: "Verifi",
   description: "Check rumors before you share them.",
