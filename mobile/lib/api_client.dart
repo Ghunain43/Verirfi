@@ -16,9 +16,16 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  // Your PC's LAN IP while developing. Change to the deployed URL later.
-  static const base = 'http://192.168.18.19:8000';
+  /// Deployed backend. For local testing run:
+  /// flutter run --dart-define=API_BASE=http://192.168.18.19:8000
+  static const base = String.fromEnvironment(
+    'API_BASE',
+    defaultValue: 'https://verifi.fastapicloud.dev',
+  );
   static const _prefKey = 'install_token';
+
+  // The free backend sleeps when idle; the first request can take up to a minute to wake it.
+  static const _wakeTimeout = Duration(seconds: 60);
 
   String? _token;
 
@@ -44,7 +51,7 @@ class ApiClient {
           headers: {'Content-Type': 'application/json'},
           body: '{}',
         )
-        .timeout(const Duration(seconds: 10));
+        .timeout(_wakeTimeout);
     if (res.statusCode != 201 && res.statusCode != 200) throw _toError(res);
     final tok =
         (jsonDecode(res.body) as Map<String, dynamic>)['install_token']
@@ -76,9 +83,9 @@ class ApiClient {
           },
           body: jsonEncode({'text': text, 'lang': 'auto', 'source': 'mobile'}),
         )
-        .timeout(const Duration(seconds: 30));
+        .timeout(_wakeTimeout);
 
-    // Token expired, or the server restarted and forgot it: get a new one once.
+    // Token expired, or the saved token is not valid for this server: get a new one once.
     if (res.statusCode == 401 && !retried) {
       _token = null;
       await _install();
@@ -86,6 +93,28 @@ class ApiClient {
     }
     if (res.statusCode != 200) throw _toError(res);
     return jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// Rumor Radar: community claims first, then recent false claims found by fact-checkers.
+  /// Each item: fingerprint, claim, reports, first_seen, last_seen, origin ("community" | "web"),
+  /// source_url, publisher, why.
+  Future<List<Map<String, dynamic>>> radar({bool retried = false}) async {
+    final token = await _ensureToken();
+    final res = await http
+        .get(
+          Uri.parse('$base/api/v1/radar'),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(_wakeTimeout);
+
+    if (res.statusCode == 401 && !retried) {
+      _token = null;
+      await _install();
+      return radar(retried: true);
+    }
+    if (res.statusCode != 200) throw _toError(res);
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return (data['items'] as List).cast<Map<String, dynamic>>();
   }
 
   /// Lookup previously checked claims by fingerprint prefix (privacy-preserving).
@@ -98,11 +127,9 @@ class ApiClient {
     final res = await http
         .get(
           Uri.parse('$base/api/v1/lookup/$prefix'),
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
+          headers: {'Authorization': 'Bearer $token'},
         )
-        .timeout(const Duration(seconds: 10));
+        .timeout(const Duration(seconds: 30));
 
     if (res.statusCode == 401 && !retried) {
       _token = null;
@@ -110,7 +137,7 @@ class ApiClient {
       return lookup(prefix, retried: true);
     }
     if (res.statusCode != 200) throw _toError(res);
-    
+
     final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     return (data['entries'] as List).cast<Map<String, dynamic>>();
   }
@@ -121,7 +148,7 @@ class ApiClient {
     final fp = computeFingerprint(text);
     final prefix = fp.substring(0, 4);
     final entries = await lookup(prefix);
-    
+
     // Find exact match by full fingerprint
     for (final entry in entries) {
       if (entry['fingerprint'] == fp) {
